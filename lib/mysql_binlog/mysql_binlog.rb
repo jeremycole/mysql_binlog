@@ -1,5 +1,3 @@
-require 'pp'
-
 module MysqlBinlog
   def self.puts_hex(data)
     hex = data.bytes.each_slice(24).inject("") do |string, slice|
