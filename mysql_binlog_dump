@@ -1,0 +1,12 @@
+#!/usr/bin/env ruby
+
+require 'pp'
+require 'mysql_binlog'
+
+include MysqlBinlog
+
+b = Binlog.new(BinlogFileReader, ARGV.first)
+
+b.each_event do |event|
+  pp event
+end
