@@ -1,5 +1,7 @@
+require 'mysql_binlog/binlog_parser'
+
 module MysqlBinlog
-  def self.puts_hex(data)
+  def puts_hex(data)
     hex = data.bytes.each_slice(24).inject("") do |string, slice|
       string << slice.map { |b| "%02x" % b }.join(" ") + "\n"
       string
@@ -51,6 +53,14 @@ module MysqlBinlog
     :heartbeat_log_event,       # 27
   ]
 
+  EVENT_FLAGS = {
+    :binlog_in_use   => 0x01,
+    :thread_specific => 0x04,
+    :suppress_use    => 0x08,
+    :artificial      => 0x20,
+    :relay_log       => 0x40,
+  }
+
   EVENT_FORMATS = {
     :format_description_event => [
       { :name => :binlog_version,   :length => 2,   :format => "v"   },
@@ -79,23 +89,6 @@ module MysqlBinlog
       { :name => :seed1,            :length => 8,   :format => "Q"   },
       { :name => :seed2,            :length => 8,   :format => "Q"   },
     ],
-    :table_map_event => [
-      { :name => :table_id,         :length => 6,   :format => "a6"  },
-      { :name => :flags,            :length => 2,   :format => "v"   },
-    ],
-    :write_rows_event => [
-      { :name => :table_id,         :length => 6,   :format => "a6"  },
-      { :name => :flags,            :length => 2,   :format => "v"   },
-    ],
-    :update_rows_event => [
-      { :name => :table_id,         :length => 6,   :format => "a6"  },
-      { :name => :flags,            :length => 2,   :format => "v"   },
-    ],
-    :delete_rows_event => [
-      { :name => :table_id,         :length => 6,   :format => "a6"  },
-      { :name => :flags,            :length => 2,   :format => "v"   },
-    ],
-    
   }
 
   class UnsupportedVersionException < Exception; end
@@ -106,14 +99,15 @@ module MysqlBinlog
   class Binlog
     attr_reader :fde
     attr_accessor :reader
+    attr_accessor :parser
     attr_accessor :event_field_parser
-    attr_accessor :filter_event_types, :filter_flags
+    attr_accessor :filter_event_types
+    attr_accessor :filter_flags
     attr_accessor :max_query_length
 
     def initialize(reader_class, *args)
-      @format_cache = {}
-
       @reader = reader_class.new(*args)
+      @parser = BinlogParser.new(self)
       @event_field_parser = BinlogEventFieldParser.new(self)
       @fde = nil
       @filter_event_types = nil
@@ -132,32 +126,20 @@ module MysqlBinlog
       end
     end
 
-    def read_and_unpack(format_description)
-      @format_cache[format_description] ||= {}
-      this_format = @format_cache[format_description][:format] ||= 
-        format_description.inject("") { |o, f| o+(f[:format] || "") }
-      this_length = @format_cache[format_description][:length] ||=
-        format_description.inject(0)  { |o, f| o+(f[:length] || 0) }
-
-      fields = {
-        :filename => reader.filename,
-        :position => reader.position,
-      }
-
-      fields_array = reader.read(this_length).unpack(this_format)
-      format_description.each_with_index do |field, index| 
-        fields[field[:name]] = fields_array[index]
-      end
-
-      fields
-    end
-
     def skip_event(header)
       reader.skip(header)
     end
 
     def read_event_header
-      read_and_unpack(EVENT_HEADER)
+      header = parser.read_and_unpack(EVENT_HEADER)
+      flags = EVENT_FLAGS.inject([]) do |result, (flag_name, flag_bit_value)|
+        if (header[:flags] & flag_bit_value) != 0
+          result << flag_name
+        end
+        result
+      end
+      header[:flags] = flags
+      header
     end
 
     def read_event_content(header)
@@ -165,7 +147,9 @@ module MysqlBinlog
 
       event_type = EVENT_TYPES[header[:event_type]]
       if EVENT_FORMATS.include? event_type
-        content = read_and_unpack(EVENT_FORMATS[event_type])
+        content = parser.read_and_unpack(EVENT_FORMATS[event_type])
+      else
+        content = {}
       end
 
       read_additional_fields(event_type, header, content)
