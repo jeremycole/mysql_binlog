@@ -33,110 +33,147 @@ as output, much like the following `Query` event:
 Not all event types are currently supported. Over time this will improve. The
 current status of event support is:
 
-## start_event_v3 (1) ##
+## Event Types ##
 
-Unsupported.
-
-## query_event (2) ##
-
-Fully supported with all fields parsed.
-
-## stop_event (3) ##
-
-Fully supported with all fields parsed.
-
-## rotate_event (4) ##
-
-Fully supported with all fields parsed.
-
-## intvar_event (5) ##
-
-Fully supported with all fields parsed.
-
-## load_event (6) ##
-
-Unsupported.
-
-## slave_event (7) ##
-
-Unsupported.
-
-## create_file_event (8) ##
-
-Unsupported.
-
-## append_block_event (9) ##
-
-Unsupported.
-
-## exec_load_event (10) ##
-
-Unsupported.
-
-## delete_file_event (11) ##
-
-Unsupported.
-
-## new_load_event (12) ##
-
-Unsupported.
-
-## rand_event (13) ##
-
-Fully supported but untested.
-
-## user_var_event (14) ##
-
-Fully supported with all fields parsed.
-
-## format_description_event (15) ##
-
-Fully supported with all fields parsed.
-
-## xid_event (16) ##
-
-Fully supported with all fields parsed.
-
-## begin_load_query_event (17) ##
-
-Unsupported.
-
-## execute_load_query_event (18) ##
-
-Unsupported.
-
-## table_map_event (19) ##
-## pre_ga_write_rows_event (20) ##
-
-Unsupported.
-
-## pre_ga_update_rows_event (21) ##
-
-Unsupported.
-
-## pre_ga_delete_rows_event (22) ##
-
-Unsupported.
-
-## write_rows_event (23) ##
-
-Partially supported. The main event fields are parsed, but not all row image
-fields can be parsed.
-
-## update_rows_event (24) ##
-
-Partially supported. The main event fields are parsed, but not all row image
-fields can be parsed.
-
-## delete_rows_event (25) ##
-
-Partially supported. The main event fields are parsed, but not all row image
-fields can be parsed.
-
-## incident_event (26) ##
-
-Unsupported.
-
-## heartbeat_log_event (27) ##
-
-Unsupported.
+<table>
+  <tr>
+    <th>ID</th>
+    <th>Event Type</th>
+    <th>Status</th>
+  </tr>
+  <tr>
+    <td>1</td>
+    <td>start_event_v3</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>query_event</td>
+    <td>Fully supported with all fields parsed.</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td>stop_event</td>
+    <td>Fully supported with all fields parsed.</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td>rotate_event</td>
+    <td>Fully supported with all fields parsed.</td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td>intvar_event</td>
+    <td>Fully supported with all fields parsed.</td>
+  </tr>
+  <tr>
+    <td>6</td>
+    <td>load_event</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>7</td>
+    <td>slave_event</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>8</td>
+    <td>create_file_event</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>9</td>
+    <td>append_block_event</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>10</td>
+    <td>exec_load_event</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>11</td>
+    <td>delete_file_event</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>12</td>
+    <td>new_load_event</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>13</td>
+    <td>rand_event</td>
+    <td>Fully supported but untested.</td>
+  </tr>
+  <tr>
+    <td>14</td>
+    <td>user_var_event</td>
+    <td>Fully supported with all fields parsed.</td>
+  </tr>
+  <tr>
+    <td>15</td>
+    <td>format_description_event</td>
+    <td>Fully supported with all fields parsed.</td>
+  </tr>
+  <tr>
+    <td>16</td>
+    <td>xid_event</td>
+    <td>Fully supported with all fields parsed.</td>
+  </tr>
+  <tr>
+    <td>17</td>
+    <td>begin_load_query_event</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>18</td>
+    <td>execute_load_query_event</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>19</td>
+    <td>table_map_event</td>
+    <td>Fully supported with all fields parsed.</td>
+  </tr>
+  <tr>
+    <td>20</td>
+    <td>pre_ga_write_rows_event</td>
+    <td>Unsupported (deprecated).</td>
+  </tr>
+  <tr>
+    <td>21</td>
+    <td>pre_ga_update_rows_event</td>
+    <td>Unsupported (deprecated).</td>
+  </tr>
+  <tr>
+    <td>22</td>
+    <td>pre_ga_delete_rows_event</td>
+    <td>Unsupported (deprecated).</td>
+  </tr>
+  <tr>
+    <td>23</td>
+    <td>write_rows_event</td>
+    <td>Partially supported.</td>
+  </tr>
+  <tr>
+    <td>24</td>
+    <td>update_rows_event</td>
+    <td>Partially supported.</td>
+  </tr>
+  <tr>
+    <td>25</td>
+    <td>delete_rows_event</td>
+    <td>Partially supported.</td>
+  </tr>
+  <tr>
+    <td>26</td>
+    <td>incident_event</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>27</td>
+    <td>heartbeat_log_event</td>
+    <td>Unsupported.</td>
+  </tr>
+</table>
