@@ -52,7 +52,6 @@ module MysqlBinlog
     def read(length)
       return "" if length == 0
       data = @binlog.read(length)
-      puts_hex data
       if !data
         raise MalformedBinlogException.new
       elsif data.length == 0
