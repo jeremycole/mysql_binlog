@@ -218,10 +218,10 @@ module MysqlBinlog
         }
       when :blob
         { :length_size => read_uint8 }
-      when :var_string, :string
+      when :string, :var_string
         {
           :real_type   => read_uint8,
-          :length_size => read_uint8,
+          :max_length  => read_uint8,
         }
       when :geometry
         { :length_size => read_uint8 }
@@ -248,7 +248,9 @@ module MysqlBinlog
         read_double
       when :string, :var_string
         read_varstring
-      when :varchar, :blob
+      when :varchar
+        read_lpstring(2)
+      when :blob
         read_lpstring(metadata[:length_size])
       when :timestamp
         read_uint32
