@@ -88,13 +88,31 @@ module MysqlBinlog
       reader.read(8).unpack("G").first
     end
 
-    # Read a variable-length encoded integer. This is very broken at the
-    # moment, and is just mapping to read_uint8, so it cannot handle numbers
-    # greater than 251. This works fine for most structural elements of binary
-    # logs, but will fall over with decoding actual RBR row images.
+    # Read a variable-length "Length Coded Binary" integer. This is derived
+    # from the MySQL protocol, and re-used in the binary log format. This
+    # format uses the first byte to alternately store the actual value for
+    # integer values <= 250, or to encode the number of following bytes
+    # used to store the actual value, which can be 2, 3, or 8. It also
+    # includes support for SQL NULL as a special case.
+    #
+    # See: http://forge.mysql.com/wiki/MySQL_Internals_ClientServer_Protocol#Elements
     def read_varint
-      # Cheating for now.
-      read_uint8
+      first_byte = read_uint8
+
+      case
+      when first_byte <= 250
+        first_byte
+      when first_byte == 251
+        nil
+      when first_byte == 252
+        read_uint16
+      when first_byte == 253
+        read_uint24
+      when first_byte == 254
+        read_uint64
+      when first_byte == 255
+        raise "Invalid variable-length integer"
+      end
     end
 
     # Read a non-terminated string, provided its length.
@@ -123,6 +141,14 @@ module MysqlBinlog
       read_nstringz(length)
     end
 
+    # Read a MySQL-style varint length-prefixed string. The length is stored
+    # as a variable-length "Length Coded Binary" value (see read_varint) which
+    # is followed by the string content itself. No termination is included.
+    def read_varstring
+      length = read_varint
+      read_nstring(length)
+    end
+
     # Read an array of unsigned 8-bit (1-byte) integers.
     def read_uint8_array(length)
       reader.read(length).bytes.to_a
@@ -135,6 +161,8 @@ module MysqlBinlog
       data.unpack("b*").first.bytes.to_a.map { |i| (i-48) == 1 }.shift(length)
     end
 
+    # Read a uint32 value, and convert it to an array of symbols derived
+    # from a mapping table provided.
     def read_uint32_bitmap_by_name(names)
       value = read_uint32
       names.inject([]) do |result, (name, bit_value)|
@@ -168,7 +196,6 @@ module MysqlBinlog
     # types are currently supported.
     def read_mysql_type(column_type)
       case column_type
-      #when :decimal
       when :tiny
         read_uint8
       when :short
@@ -179,24 +206,22 @@ module MysqlBinlog
         read_uint32
       when :longlong
         read_uint64
-      when :string
-        length = read_varint
-        read_nstring(length)
-
+      when :string, :var_string, :varchar
+        read_varstring
       when :float
         read_float
       when :double
         read_double
-      #when :null
       when :timestamp
         read_uint32
+      when :year
+        read_uint8 + 1900
       #when :date
       #when :time
       #when :datetime
-      #when :year
       #when :newdate
-      #when :varchar
       #when :bit
+      #when :decimal
       #when :newdecimal
       #when :enum
       #when :set
@@ -204,8 +229,6 @@ module MysqlBinlog
       #when :medium_blob
       #when :long_blob
       #when :blob
-      #when :var_string
-      #when :string
       #when :geometry
       end
     end

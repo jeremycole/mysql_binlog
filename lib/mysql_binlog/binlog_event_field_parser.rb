@@ -116,7 +116,7 @@ module MysqlBinlog
       map_entry[:table] = parser.read_lpstringz
       columns = parser.read_varint
       columns_type = parser.read_uint8_array(columns).map { |c| MYSQL_TYPES[c] }
-      columns_metadata = parser.read_lpstring
+      columns_metadata = parser.read_varstring
       columns_nullable = parser.read_bit_array(columns)
 
       map_entry[:columns] = columns.times.map do |c|
