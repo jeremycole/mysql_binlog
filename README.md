@@ -1,7 +1,6 @@
 # Library for parsing MySQL binary logs in Ruby #
 
-This library parses a MySQL binary log in pure Ruby and produces hashes
-as output, much like the following `Query` event:
+This library parses a MySQL binary log in pure Ruby and produces hashes as output, much like the following `Query` event:
 
     {:type=>:query_event,
      :filename=>"/Users/jeremycole/t/mysql-bin.000001",
@@ -30,8 +29,7 @@ as output, much like the following `Query` event:
 
 # Status #
 
-Not all event types are currently supported. Over time this will improve. The
-current status of event support is:
+All event types can be read, but may not be parsed, as not all event types are currently fully supported. Over time this will improve. The current status of event support is documented below.
 
 ## Event Types ##
 

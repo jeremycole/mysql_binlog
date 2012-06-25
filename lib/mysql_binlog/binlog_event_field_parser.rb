@@ -35,7 +35,7 @@ module MysqlBinlog
       @table_map = {}
     end
 
-    # Parse additional fields for a rotate_event.
+    # Parse additional fields for a +Rotate+ event.
     def rotate_event(header, fields)
       name_length = reader.remaining(header)
       fields[:name] = reader.read(name_length)
@@ -48,7 +48,6 @@ module MysqlBinlog
     # * The content itself, determined by the type. Additional processing is
     #   required based on the type.
     def _query_event_status(header, fields)
-      # It probably makes sense to read status_length here as well.
       status = {}
       status_length = parser.read_uint16
       end_position = reader.position + status_length
@@ -57,13 +56,6 @@ module MysqlBinlog
         status[status_type] = case status_type
         when :flags2
           parser.read_uint32_bitmap_by_name(QUERY_EVENT_FLAGS2)
-          #flags2 = parser.read_uint32
-          #QUERY_EVENT_FLAGS2.inject([]) do |result, (flag_name, flag_bit_value)|
-          #  if (flags2 & flag_bit_value) != 0
-          #    result << flag_name
-          #  end
-          #  result
-          #end
         when :sql_mode
           parser.read_uint64
         when :catalog
@@ -94,6 +86,7 @@ module MysqlBinlog
       status
     end
 
+    # Parse additional fields for a +Query+ event.
     def query_event(header, fields)
       fields[:status] = _query_event_status(header, fields)
       fields[:db] = parser.read_nstringz(fields[:db_length])
@@ -102,6 +95,7 @@ module MysqlBinlog
       fields[:query] = reader.read([query_length, binlog.max_query_length].min)
     end
 
+    # Parse additional fields for an +Intvar+ event.
     def intvar_event(header, fields)
       case fields[:intvar_type]
       when 1
@@ -113,6 +107,7 @@ module MysqlBinlog
       end
     end
 
+    # Parse additional fields for a +Table_map+ event.
     def table_map_event(header, fields)
       fields[:table_id] = parser.read_uint48
       fields[:flags] = parser.read_uint16
@@ -134,6 +129,9 @@ module MysqlBinlog
       fields[:map_entry] = map_entry
     end
 
+    # Parse the row images present in a row-based replication row event. This
+    # is rather incomplete right now due missing support for many MySQL types,
+    # but can parse some basic events.
     def _generic_rows_event_row_images(header, fields)
       row_images = []
       end_position = reader.position + reader.remaining(header)
@@ -154,6 +152,10 @@ module MysqlBinlog
       row_images
     end
 
+    # Parse additional fields for any of the row-based replication row events:
+    # * +Write_rows+ which is used for +INSERT+.
+    # * +Update_rows+ which is used for +UPDATE+.
+    # * +Delete_rows+ which is used for +DELETE+.
     def generic_rows_event(header, fields)
       table_id = parser.read_uint48
       fields[:table] = @table_map[table_id]
