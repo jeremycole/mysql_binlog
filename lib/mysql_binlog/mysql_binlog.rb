@@ -1,15 +1,4 @@
 module MysqlBinlog
-  # A simple method to print a string as in hex representation per byte,
-  # with no more than 24 bytes per line, and spaces between each byte.
-  # There is probably a better way to do this, but I don't know it.
-  def puts_hex(data)
-    hex = data.bytes.each_slice(24).inject("") do |string, slice|
-      string << slice.map { |b| "%02x" % b }.join(" ") + "\n"
-      string
-    end
-    puts hex
-  end
-
   # An array to quickly map an integer event type to its symbol.
   EVENT_TYPES = [
     :unknown_event,             #  0
@@ -109,8 +98,8 @@ module MysqlBinlog
     attr_accessor :filter_flags
     attr_accessor :max_query_length
 
-    def initialize(reader_class, *args)
-      @reader = reader_class.new(*args)
+    def initialize(reader)
+      @reader = reader
       @parser = BinlogParser.new(self)
       @event_field_parser = BinlogEventFieldParser.new(self)
       @fde = nil

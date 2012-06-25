@@ -5,8 +5,10 @@ require 'mysql_binlog'
 
 include MysqlBinlog
 
-b = Binlog.new(BinlogFileReader, ARGV.first)
+reader = BinlogFileReader.new(ARGV.first)
+#reader = DebuggingReader.new(reader)
+binlog = Binlog.new(reader)
 
-b.each_event do |event|
+binlog.each_event do |event|
   pp event
 end
