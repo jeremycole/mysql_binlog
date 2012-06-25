@@ -1,17 +1,21 @@
 module MysqlBinlog
+  # A mapping array for all values that may appear in the +status+ field of
+  # a query_event.
   QUERY_EVENT_STATUS_TYPES = [
-    :flags2,
-    :sql_mode,
-    :catalog,
-    :auto_increment,
-    :charset,
-    :time_zone,
-    :catalog_nz,
-    :lc_time_names,
-    :charset_database,
-    :table_map_for_update,
+    :flags2,                    # 0
+    :sql_mode,                  # 1
+    :catalog,                   # 2
+    :auto_increment,            # 3
+    :charset,                   # 4
+    :time_zone,                 # 5
+    :catalog_nz,                # 6
+    :lc_time_names,             # 7
+    :charset_database,          # 8
+    :table_map_for_update,      # 9
   ]
 
+  # A mapping hash for all values that may appear in the +flags2+ field of
+  # a query_event.
   QUERY_EVENT_FLAGS2 = {
     :auto_is_null           => 1 << 14,
     :not_autocommit         => 1 << 19,
@@ -31,26 +35,35 @@ module MysqlBinlog
       @table_map = {}
     end
 
+    # Parse additional fields for a rotate_event.
     def rotate_event(header, fields)
       name_length = reader.remaining(header)
-      fields[:name_length] = name_length
       fields[:name] = reader.read(name_length)
     end
 
+    # Parse a dynamic +status+ structure within a query_event, which consists
+    # of a status_length (uint16) followed by a number of status variables
+    # (determined by the +status_length+) each of which consist of:
+    # * A type code (uint8), one of QUERY_EVENT_STATUS_TYPES.
+    # * The content itself, determined by the type. Additional processing is
+    #   required based on the type.
     def _query_event_status(header, fields)
+      # It probably makes sense to read status_length here as well.
       status = {}
-      end_position = reader.position + fields[:status_length]
+      status_length = parser.read_uint16
+      end_position = reader.position + status_length
       while reader.position < end_position
         status_type = QUERY_EVENT_STATUS_TYPES[parser.read_uint8]
         status[status_type] = case status_type
         when :flags2
-          flags2 = parser.read_uint32
-          QUERY_EVENT_FLAGS2.inject([]) do |result, (flag_name, flag_bit_value)|
-            if (flags2 & flag_bit_value) != 0
-              result << flag_name
-            end
-            result
-          end
+          parser.read_uint32_bitmap_by_name(QUERY_EVENT_FLAGS2)
+          #flags2 = parser.read_uint32
+          #QUERY_EVENT_FLAGS2.inject([]) do |result, (flag_name, flag_bit_value)|
+          #  if (flags2 & flag_bit_value) != 0
+          #    result << flag_name
+          #  end
+          #  result
+          #end
         when :sql_mode
           parser.read_uint64
         when :catalog
@@ -83,7 +96,6 @@ module MysqlBinlog
 
     def query_event(header, fields)
       fields[:status] = _query_event_status(header, fields)
-      fields.delete :status_length
       fields[:db] = parser.read_nstringz(fields[:db_length])
       fields.delete :db_length
       query_length = reader.remaining(header)

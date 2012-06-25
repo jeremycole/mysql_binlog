@@ -1,6 +1,7 @@
-require 'mysql_binlog/binlog_parser'
-
 module MysqlBinlog
+  # A simple method to print a string as in hex representation per byte,
+  # with no more than 24 bytes per line, and spaces between each byte.
+  # There is probably a better way to do this, but I don't know it.
   def puts_hex(data)
     hex = data.bytes.each_slice(24).inject("") do |string, slice|
       string << slice.map { |b| "%02x" % b }.join(" ") + "\n"
@@ -9,19 +10,7 @@ module MysqlBinlog
     puts hex
   end
 
-  MAGIC = [
-    { :name => :magic,            :length => 4,   :format => "V"   },
-  ]
-
-  EVENT_HEADER = [
-    { :name => :timestamp,        :length => 4,   :format => "V"   },
-    { :name => :event_type,       :length => 1,   :format => "C"   },
-    { :name => :server_id,        :length => 4,   :format => "V"   },
-    { :name => :event_length,     :length => 4,   :format => "V"   },
-    { :name => :next_position,    :length => 4,   :format => "V"   },
-    { :name => :flags,            :length => 2,   :format => "v"   },
-  ]
-
+  # An array to quickly map an integer event type to its symbol.
   EVENT_TYPES = [
     :unknown_event,             #  0
     :start_event_v3,            #  1
@@ -53,6 +42,19 @@ module MysqlBinlog
     :heartbeat_log_event,       # 27
   ]
 
+  # A common fixed-length header that is included with each event.
+  EVENT_HEADER = [
+    { :name => :timestamp,        :length => 4,   :format => "V"   },
+    { :name => :event_type,       :length => 1,   :format => "C"   },
+    { :name => :server_id,        :length => 4,   :format => "V"   },
+    { :name => :event_length,     :length => 4,   :format => "V"   },
+    { :name => :next_position,    :length => 4,   :format => "V"   },
+    { :name => :flags,            :length => 2,   :format => "v"   },
+  ]
+
+  # Values for the 'flags' field that may appear in binlogs. There are
+  # several other values that never appear in a file but may be used
+  # in events in memory.
   EVENT_FLAGS = {
     :binlog_in_use   => 0x01,
     :thread_specific => 0x04,
@@ -61,6 +63,9 @@ module MysqlBinlog
     :relay_log       => 0x40,
   }
 
+  # Format descriptions for fixed-length fields that may appear in the data
+  # for each event. Additional fields may be dynamic and are parsed by the
+  # methods in the BinlogEventFieldParser class.
   EVENT_FORMATS = {
     :format_description_event => [
       { :name => :binlog_version,   :length => 2,   :format => "v"   },
@@ -76,7 +81,6 @@ module MysqlBinlog
       { :name => :elapsed_time,     :length => 4,   :format => "V"   },
       { :name => :db_length,        :length => 1,   :format => "C"   },
       { :name => :error_code,       :length => 2,   :format => "v"   },
-      { :name => :status_length,    :length => 2,   :format => "v"   },
     ],
     :intvar_event => [
       { :name => :intvar_type,      :length => 1,   :format => "C"   },
@@ -115,49 +119,79 @@ module MysqlBinlog
       @max_query_length = 1048576
     end
 
+    # Rewind to the beginning of the log, if supported by the reader. The
+    # reader may throw an exception if rewinding is not supported (e.g. for
+    # a stream-based reader).
     def rewind
       reader.rewind
-      read_file_header
     end
 
+    # Read fixed fields using format definitions in 'unpack' format provided
+    # in the EVENT_FORMATS hash.
+    def read_fixed_fields(event_type, header)
+      if EVENT_FORMATS.include? event_type
+        parser.read_and_unpack(EVENT_FORMATS[event_type])
+      end
+    end
+
+    # Read dynamic fields or fields that require more processing before being
+    # saved in the event.
     def read_additional_fields(event_type, header, fields)
       if event_field_parser.methods.include? event_type.to_s
         event_field_parser.send(event_type, header, fields)
       end
     end
 
+    # Skip the remainder of this event. This can be used to skip an entire
+    # event or merely the parts of the event this library does not understand.
     def skip_event(header)
       reader.skip(header)
     end
 
+    # Read the common header for an event. Every event has a header.
     def read_event_header
       header = parser.read_and_unpack(EVENT_HEADER)
+
+      # Merge the read 'flags' bitmap with the EVENT_FLAGS hash to return
+      # the flags by name instead of returning the bitmap as an integer.
       flags = EVENT_FLAGS.inject([]) do |result, (flag_name, flag_bit_value)|
         if (header[:flags] & flag_bit_value) != 0
           result << flag_name
         end
         result
       end
+
+      # Overwrite the integer version of 'flags' with the array of names.
       header[:flags] = flags
+
       header
     end
 
+    # Read the content of the event, which consists of an optional fixed field
+    # portion and an optional dynamic portion.
     def read_event_content(header)
-      content = nil
-
       event_type = EVENT_TYPES[header[:event_type]]
-      if EVENT_FORMATS.include? event_type
-        content = parser.read_and_unpack(EVENT_FORMATS[event_type])
-      else
-        content = {}
-      end
 
+      # Read the fixed portion of the event, if it is understood, or there is
+      # one. If not, initialize content with an empty hash instead.
+      content = read_fixed_fields(event_type, header) || {}
+
+      # Read additional fields from the dynamic portion of the event. Some of
+      # these may actually be fixed width but needed more processing in a
+      # function instead of the unpack formats possible in read_fixed_fields.
       read_additional_fields(event_type, header, content)
 
+      # Anything left unread at this point is skipped based on the event length
+      # provided in the header. In this way, it is possible to skip over events
+      # that are not able to be parsed correctly by this library.
       skip_event(header)
+
       content
     end
 
+    # Scan events until finding one that isn't rejected by the filter rules.
+    # If there are no filter rules, this will return the next event provided
+    # by the reader.
     def read_event
       while true
         skip_this_event = false
@@ -187,12 +221,13 @@ module MysqlBinlog
           end
         end
 
+        # Never skip over rotate_event or format_description_event as they
+        # are critical to understanding the format of this event stream.
         unless [:rotate_event, :format_description_event].include? event_type
           next if skip_this_event
         end
         
         content = read_event_content(header)
-        content
 
         case event_type
         when :rotate_event
@@ -213,6 +248,9 @@ module MysqlBinlog
       }
     end
 
+    # Process a format description event, which describes the version of this
+    # file, and the format of events which will appear in this file. This also
+    # provides the version of the MySQL server which generated this file.
     def process_fde(fde)
       if (version = fde[:binlog_version]) != 4
         raise UnsupportedVersionException.new("Binlog version #{version} is not supported")
@@ -224,7 +262,8 @@ module MysqlBinlog
         :server_version => fde[:server_version],
       }
     end
-  
+
+    # Iterate through all events.
     def each_event
       while event = read_event
         yield event
