@@ -9,25 +9,27 @@ module MysqlBinlog
     end
   end
 
-  
   class DebuggingReader
-    def initialize(wrapped)
+    def initialize(wrapped, options={})
       @wrapped = wrapped
+      @options = options
     end
 
-    # Print the function name of the calling function, followed by the data
-    # read in a nice hex format.
-    def read(length)
-      data = @wrapped.read(length)
-      puts "Read #{length} bytes #{caller.first.split(":")[2]}:"
-      puts hexdump(data)
-
-      data
-    end
-
-    # Pass through all other method calls.
+    # Pass through all method calls.
     def method_missing(method, *args)
-      @wrapped.send(method, *args)
+      if @options[:calls]
+        puts "#{@wrapped.class}.#{method}"
+      end
+
+      return_value = @wrapped.send(method, *args)
+
+      # Print the returned data from :read in a nice hex dump format.
+      if method == :read and @options[:data]
+        puts "Read #{args[0]} bytes #{caller.first.split(":")[2]}:"
+        puts hexdump(return_value)
+      end
+
+      return_value
     end
   end
 end

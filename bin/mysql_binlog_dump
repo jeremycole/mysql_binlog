@@ -6,7 +6,7 @@ require 'mysql_binlog'
 include MysqlBinlog
 
 reader = BinlogFileReader.new(ARGV.first)
-#reader = DebuggingReader.new(reader)
+#reader = DebuggingReader.new(reader, :data => true, :calls => true)
 binlog = Binlog.new(reader)
 
 binlog.each_event do |event|
