@@ -128,17 +128,28 @@ module MysqlBinlog
     end
 
     # Read a (Pascal-style) length-prefixed string. The length is stored as a
-    # 8-bit (1-byte) unsigned integer followed by the string itself with no
-    # termination character.
-    def read_lpstring
-      length = read_uint8
+    # 8-bit (1-byte) to 32-bit (4-byte) unsigned integer, depending on the
+    # optional size parameter (default 1), followed by the string itself with
+    # no termination character.
+    def read_lpstring(size=1)
+      case size
+      when 1
+        length = read_uint8
+      when 2
+        length = read_uint16
+      when 3
+        length = read_uint24
+      when 4
+        length = read_uint32
+      end
       read_nstring(length)
     end
 
-    # Read an lpstring which is also terminated with a null byte.
-    def read_lpstringz
-      length = read_uint8
-      read_nstringz(length)
+    # Read an lpstring (as above) which is also terminated with a null byte.
+    def read_lpstringz(size=1)
+      string = read_lpstring(size)
+      reader.read(1) # null
+      string
     end
 
     # Read a MySQL-style varint length-prefixed string. The length is stored
@@ -192,10 +203,35 @@ module MysqlBinlog
       fields
     end
 
+    def read_mysql_type_metadata(column_type)
+      case column_type
+      when :float, :double
+        { :size => read_uint8 }
+      when :varchar
+        { :max_length => read_uint16 }
+      when :bit
+        { :size => read_uint8 }
+      when :decimal
+        {
+          :precision => read_uint8,
+          :decimals  => read_uint8,
+        }
+      when :blob
+        { :length_size => read_uint8 }
+      when :var_string, :string
+        {
+          :real_type   => read_uint8,
+          :length_size => read_uint8,
+        }
+      when :geometry
+        { :length_size => read_uint8 }
+      end
+    end
+
     # Read a single field, provided the MySQL column type as a symbol. Not all
     # types are currently supported.
-    def read_mysql_type(column_type)
-      case column_type
+    def read_mysql_type(type, metadata=nil)
+      case type
       when :tiny
         read_uint8
       when :short
@@ -206,12 +242,14 @@ module MysqlBinlog
         read_uint32
       when :longlong
         read_uint64
-      when :string, :var_string, :varchar
-        read_varstring
       when :float
         read_float
       when :double
         read_double
+      when :string, :var_string
+        read_varstring
+      when :varchar, :blob
+        read_lpstring(metadata[:length_size])
       when :timestamp
         read_uint32
       when :year
@@ -225,10 +263,6 @@ module MysqlBinlog
       #when :newdecimal
       #when :enum
       #when :set
-      #when :tiny_blob
-      #when :medium_blob
-      #when :long_blob
-      #when :blob
       #when :geometry
       end
     end
