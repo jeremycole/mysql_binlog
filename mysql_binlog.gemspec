@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name        = 'mysql_binlog'
-  s.version     = '0.1.0'
+  s.version     = '0.1.1'
   s.date        = '2012-06-24'
   s.summary     = 'MySQL Binary Log Parser'
   s.description = 'Library for parsing MySQL binary logs in Ruby'
