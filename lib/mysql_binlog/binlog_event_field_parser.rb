@@ -4,11 +4,11 @@ module MysqlBinlog
   QUERY_EVENT_STATUS_TYPES = [
     :flags2,                    # 0
     :sql_mode,                  # 1
-    :catalog,                   # 2
+    :catalog_deprecated,        # 2
     :auto_increment,            # 3
     :charset,                   # 4
     :time_zone,                 # 5
-    :catalog_nz,                # 6
+    :catalog,                   # 6
     :lc_time_names,             # 7
     :charset_database,          # 8
     :table_map_for_update,      # 9
@@ -58,7 +58,7 @@ module MysqlBinlog
           parser.read_uint32_bitmap_by_name(QUERY_EVENT_FLAGS2)
         when :sql_mode
           parser.read_uint64
-        when :catalog
+        when :catalog_deprecated
           parser.read_lpstringz
         when :auto_increment
           {
@@ -73,7 +73,7 @@ module MysqlBinlog
           }
         when :time_zone
           parser.read_lpstring
-        when :catalog_nz
+        when :catalog
           parser.read_lpstring
         when :lc_time_names
           parser.read_uint16
