@@ -107,7 +107,8 @@ module MysqlBinlog
       end
     end
 
-    def _table_map_event_metadata(columns_type)
+    # Parse column metadata within a table map event.
+    def _table_map_event_column_metadata(columns_type)
       length = parser.read_varint
       columns_type.map do |c|
         parser.read_mysql_type_metadata(c)
@@ -123,7 +124,7 @@ module MysqlBinlog
       map_entry[:table] = parser.read_lpstringz
       columns = parser.read_varint
       columns_type = parser.read_uint8_array(columns).map { |c| MYSQL_TYPES[c] }
-      columns_metadata = _table_map_event_metadata(columns_type)
+      columns_metadata = _table_map_event_column_metadata(columns_type)
       columns_nullable = parser.read_bit_array(columns)
 
       map_entry[:columns] = columns.times.map do |c|
@@ -137,29 +138,44 @@ module MysqlBinlog
       fields[:map_entry] = map_entry
     end
 
+    # Parse a single row image, which is comprised of a series of columns. Not
+    # all columns are present in the row image, the columns_used array of true
+    # and false values identifies which columns are present.
+    def _generic_rows_event_row_image(header, fields, columns_used)
+      row_image = []
+      columns_null = parser.read_bit_array(fields[:table][:columns].size)
+      fields[:table][:columns].each_with_index do |column, column_index|
+        if !columns_used[column_index]
+          row_image << nil
+        elsif columns_null[column_index]
+          row_image << { column => nil }
+        else
+          row_image << {
+            column => parser.read_mysql_type(column[:type], column[:metadata])
+          }
+        end
+      end
+      row_image
+    end
+
     # Parse the row images present in a row-based replication row event. This
     # is rather incomplete right now due missing support for many MySQL types,
     # but can parse some basic events.
     def _generic_rows_event_row_images(header, fields, columns_used)
-      row_image_index = 0
       row_images = []
       end_position = reader.position + reader.remaining(header)
       while reader.position < end_position
-        row_image = []
-        columns_null = parser.read_bit_array(fields[:table][:columns].size)
-        fields[:table][:columns].each_with_index do |column, column_index|
-          if !columns_used[row_image_index][column_index]
-            row_image << nil
-          elsif columns_null[column_index]
-            row_image << { column => nil }
-          else
-            row_image << {
-              column => parser.read_mysql_type(column[:type], column[:metadata])
-            }
-          end
+        row_image = {}
+        case EVENT_TYPES[header[:event_type]]
+        when :write_rows_event
+          row_image[:after]  = _generic_rows_event_row_image(header, fields, columns_used[:after])
+        when :delete_rows_event
+          row_image[:before] = _generic_rows_event_row_image(header, fields, columns_used[:before])
+        when :update_rows_event
+          row_image[:before] = _generic_rows_event_row_image(header, fields, columns_used[:before])
+          row_image[:after]  = _generic_rows_event_row_image(header, fields, columns_used[:after])
         end
         row_images << row_image
-        row_image_index += 1
       end
       row_images
     end
@@ -173,10 +189,15 @@ module MysqlBinlog
       fields[:table] = @table_map[table_id]
       fields[:flags] = parser.read_uint16
       columns = parser.read_varint
-      columns_used = []
-      columns_used[0] = parser.read_bit_array(columns)
-      if EVENT_TYPES[header[:event_type]] == :update_rows_event
-        columns_used[1] = parser.read_bit_array(columns)
+      columns_used = {}
+      case EVENT_TYPES[header[:event_type]]
+      when :write_rows_event
+        columns_used[:after]  = parser.read_bit_array(columns)
+      when :delete_rows_event
+        columns_used[:before] = parser.read_bit_array(columns)
+      when :update_rows_event
+        columns_used[:before] = parser.read_bit_array(columns)
+        columns_used[:after]  = parser.read_bit_array(columns)
       end
       fields[:row_image] = _generic_rows_event_row_images(header, fields, columns_used)
     end
