@@ -1,57 +1,4 @@
 module MysqlBinlog
-  # An array to quickly map an integer event type to its symbol.
-  EVENT_TYPES = [
-    :unknown_event,             #  0
-    :start_event_v3,            #  1
-    :query_event,               #  2
-    :stop_event,                #  3
-    :rotate_event,              #  4
-    :intvar_event,              #  5
-    :load_event,                #  6
-    :slave_event,               #  7
-    :create_file_event,         #  8
-    :append_block_event,        #  9
-    :exec_load_event,           # 10
-    :delete_file_event,         # 11
-    :new_load_event,            # 12
-    :rand_event,                # 13
-    :user_var_event,            # 14
-    :format_description_event,  # 15
-    :xid_event,                 # 16
-    :begin_load_query_event,    # 17
-    :execute_load_query_event,  # 18
-    :table_map_event,           # 19
-    :pre_ga_write_rows_event,   # 20
-    :pre_ga_update_rows_event,  # 21
-    :pre_ga_delete_rows_event,  # 22
-    :write_rows_event,          # 23
-    :update_rows_event,         # 24
-    :delete_rows_event,         # 25
-    :incident_event,            # 26
-    :heartbeat_log_event,       # 27
-  ]
-
-  # A common fixed-length header that is included with each event.
-  EVENT_HEADER = [
-    { :name => :timestamp,        :length => 4,   :format => "V"   },
-    { :name => :event_type,       :length => 1,   :format => "C"   },
-    { :name => :server_id,        :length => 4,   :format => "V"   },
-    { :name => :event_length,     :length => 4,   :format => "V"   },
-    { :name => :next_position,    :length => 4,   :format => "V"   },
-    { :name => :flags,            :length => 2,   :format => "v"   },
-  ]
-
-  # Values for the 'flags' field that may appear in binlogs. There are
-  # several other values that never appear in a file but may be used
-  # in events in memory.
-  EVENT_FLAGS = {
-    :binlog_in_use   => 0x01,
-    :thread_specific => 0x04,
-    :suppress_use    => 0x08,
-    :artificial      => 0x20,
-    :relay_log       => 0x40,
-  }
-
   class UnsupportedVersionException < Exception; end
   class MalformedBinlogException < Exception; end
   class ZeroReadException < Exception; end
@@ -89,25 +36,6 @@ module MysqlBinlog
       reader.skip(header)
     end
 
-    # Read the common header for an event. Every event has a header.
-    def read_event_header
-      header = field_parser.read_and_unpack(EVENT_HEADER)
-
-      # Merge the read 'flags' bitmap with the EVENT_FLAGS hash to return
-      # the flags by name instead of returning the bitmap as an integer.
-      flags = EVENT_FLAGS.inject([]) do |result, (flag_name, flag_bit_value)|
-        if (header[:flags] & flag_bit_value) != 0
-          result << flag_name
-        end
-        result
-      end
-
-      # Overwrite the integer version of 'flags' with the array of names.
-      header[:flags] = flags
-
-      header
-    end
-
     # Read the content of the event, which follows the header.
     def read_event_fields(header)
       event_type = EVENT_TYPES[header[:event_type]]
@@ -137,7 +65,8 @@ module MysqlBinlog
         filename = reader.filename
         position = reader.position
 
-        unless header = read_event_header
+        # Read the common header for an event. Every event has a header.
+        unless header = event_parser.event_header
           return nil
         end
 
