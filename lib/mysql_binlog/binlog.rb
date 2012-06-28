@@ -52,38 +52,6 @@ module MysqlBinlog
     :relay_log       => 0x40,
   }
 
-  # Format descriptions for fixed-length fields that may appear in the data
-  # for each event. Additional fields may be dynamic and are parsed by the
-  # methods in the BinlogEventParser class.
-  EVENT_FORMATS = {
-    :format_description_event => [
-      { :name => :binlog_version,   :length => 2,   :format => "v"   },
-      { :name => :server_version,   :length => 50,  :format => "A50" },
-      { :name => :create_timestamp, :length => 4,   :format => "V"   },
-      { :name => :header_length,    :length => 1,   :format => "C"   },
-    ],
-    :rotate_event => [
-      { :name => :pos,              :length => 8,   :format => "Q"   },
-    ],
-    :query_event => [
-      { :name => :thread_id,        :length => 4,   :format => "V"   },
-      { :name => :elapsed_time,     :length => 4,   :format => "V"   },
-      { :name => :db_length,        :length => 1,   :format => "C"   },
-      { :name => :error_code,       :length => 2,   :format => "v"   },
-    ],
-    :intvar_event => [
-      { :name => :intvar_type,      :length => 1,   :format => "C"   },
-      { :name => :intvar_value,     :length => 8,   :format => "Q"   },
-    ],
-    :xid_event => [
-      { :name => :xid,              :length => 8,   :format => "Q"   },
-    ],
-    :rand_event => [ # Untested
-      { :name => :seed1,            :length => 8,   :format => "Q"   },
-      { :name => :seed2,            :length => 8,   :format => "Q"   },
-    ],
-  }
-
   class UnsupportedVersionException < Exception; end
   class MalformedBinlogException < Exception; end
   class ZeroReadException < Exception; end
@@ -115,22 +83,6 @@ module MysqlBinlog
       reader.rewind
     end
 
-    # Read fixed fields using format definitions in 'unpack' format provided
-    # in the EVENT_FORMATS hash.
-    def read_fixed_fields(event_type, header)
-      if EVENT_FORMATS.include? event_type
-        field_parser.read_and_unpack(EVENT_FORMATS[event_type])
-      end
-    end
-
-    # Read dynamic fields or fields that require more processing before being
-    # saved in the event.
-    def read_additional_fields(event_type, header, fields)
-      if event_parser.methods.include? event_type.to_s
-        event_parser.send(event_type, header, fields)
-      end
-    end
-
     # Skip the remainder of this event. This can be used to skip an entire
     # event or merely the parts of the event this library does not understand.
     def skip_event(header)
@@ -156,26 +108,22 @@ module MysqlBinlog
       header
     end
 
-    # Read the content of the event, which consists of an optional fixed field
-    # portion and an optional dynamic portion.
-    def read_event_content(header)
+    # Read the content of the event, which follows the header.
+    def read_event_fields(header)
       event_type = EVENT_TYPES[header[:event_type]]
 
-      # Read the fixed portion of the event, if it is understood, or there is
-      # one. If not, initialize content with an empty hash instead.
-      content = read_fixed_fields(event_type, header) || {}
-
-      # Read additional fields from the dynamic portion of the event. Some of
-      # these may actually be fixed width but needed more processing in a
-      # function instead of the unpack formats possible in read_fixed_fields.
-      read_additional_fields(event_type, header, content)
+      # Delegate the parsing of the event content to a method of the same name
+      # in BinlogEventParser.
+      if event_parser.methods.include? event_type.to_s
+        fields = event_parser.send(event_type, header)
+      end
 
       # Anything left unread at this point is skipped based on the event length
       # provided in the header. In this way, it is possible to skip over events
       # that are not able to be parsed correctly by this library.
       skip_event(header)
 
-      content
+      fields
     end
 
     # Scan events until finding one that isn't rejected by the filter rules.
@@ -196,33 +144,33 @@ module MysqlBinlog
         event_type = EVENT_TYPES[header[:event_type]]
         
         if @filter_event_types
-          unless @filter_event_types.include? event_type or
-                  event_type == :format_description_event
-            skip_event(header)
+          unless @filter_event_types.include? event_type
             skip_this_event = true
           end
         end
         
         if @filter_flags
           unless @filter_flags.include? header[:flags]
-            skip_event(header)
             skip_this_event = true
           end
         end
 
         # Never skip over rotate_event or format_description_event as they
         # are critical to understanding the format of this event stream.
-        unless [:rotate_event, :format_description_event].include? event_type
-          next if skip_this_event
+        if skip_this_event
+          unless [:rotate_event, :format_description_event].include? event_type
+            skip_event(header)
+            next
+          end
         end
         
-        content = read_event_content(header)
+        fields = read_event_fields(header)
 
         case event_type
         when :rotate_event
-          reader.rotate(content[:name], content[:pos])
+          reader.rotate(fields[:name], fields[:pos])
         when :format_description_event
-          process_fde(content)
+          process_fde(fields)
         end
 
         break
@@ -233,7 +181,7 @@ module MysqlBinlog
         :filename => filename,
         :position => position,
         :header   => header,
-        :event    => content,
+        :event    => fields,
       }
     end
 
@@ -245,6 +193,8 @@ module MysqlBinlog
         raise UnsupportedVersionException.new("Binlog version #{version} is not supported")
       end
 
+      # Save the interesting fields from an FDE so that this information is
+      # available at any time later.
       @fde = {
         :header_length  => fde[:header_length],
         :binlog_version => fde[:binlog_version],

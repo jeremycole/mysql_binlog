@@ -120,11 +120,9 @@ module MysqlBinlog
       reader.read(length)
     end
 
-    # Read a null-terminated string, provided its length (without the null).
+    # Read a null-terminated string, provided its length (with the null).
     def read_nstringz(length)
-      string = read_nstring(length)
-      reader.read(1) # null
-      string
+      reader.read(length).unpack("A*").first
     end
 
     # Read a (Pascal-style) length-prefixed string. The length is stored as a

@@ -23,6 +23,12 @@ module MysqlBinlog
     :relaxed_unique_checks  => 1 << 27,
   }
 
+  INTVAR_EVENT_INTVAR_TYPES = [
+    nil,
+    :last_insert_id,
+    :insert_id,
+  ]
+
   class BinlogEventParser
     attr_accessor :binlog
     attr_accessor :reader
@@ -35,10 +41,23 @@ module MysqlBinlog
       @table_map = {}
     end
 
-    # Parse additional fields for a +Rotate+ event.
-    def rotate_event(header, fields)
+    # Parse fields for a +Format_description+ event.
+    def format_description_event(header)
+      fields = {}
+      fields[:binlog_version]   = parser.read_uint16
+      fields[:server_version]   = parser.read_nstringz(50)
+      fields[:create_timestamp] = parser.read_uint32
+      fields[:header_length]    = parser.read_uint8
+      fields
+    end
+
+    # Parse fields for a +Rotate+ event.
+    def rotate_event(header)
+      fields = {}
+      fields[:pos] = parser.read_uint64
       name_length = reader.remaining(header)
-      fields[:name] = reader.read(name_length)
+      fields[:name] = parser.read_nstring(name_length)
+      fields
     end
 
     # Parse a dynamic +status+ structure within a query_event, which consists
@@ -86,25 +105,44 @@ module MysqlBinlog
       status
     end
 
-    # Parse additional fields for a +Query+ event.
-    def query_event(header, fields)
+    # Parse fields for a +Query+ event.
+    def query_event(header)
+      fields = {}
+      fields[:thread_id] = parser.read_uint32
+      fields[:elapsed_time] = parser.read_uint32
+      db_length = parser.read_uint8
+      fields[:error_code] = parser.read_uint16
       fields[:status] = _query_event_status(header, fields)
-      fields[:db] = parser.read_nstringz(fields[:db_length])
-      fields.delete :db_length
+      fields[:db] = parser.read_nstringz(db_length + 1)
       query_length = reader.remaining(header)
       fields[:query] = reader.read([query_length, binlog.max_query_length].min)
+      fields
     end
 
-    # Parse additional fields for an +Intvar+ event.
-    def intvar_event(header, fields)
-      case fields[:intvar_type]
-      when 1
-        fields[:intvar_name] = :last_insert_id
-      when 2
-        fields[:intvar_name] = :insert_id
-      else
-        fields[:intvar_name] = nil
-      end
+    # Parse fields for an +Intvar+ event.
+    def intvar_event(header)
+      fields = {}
+
+      fields[:intvar_type]  = parser.read_uint8
+      fields[:intvar_name]  = INTVAR_EVENT_INTVAR_TYPES[fields[:intvar_type]]
+      fields[:intvar_value] = parser.read_uint64
+
+      fields
+    end
+
+    # Parse fields for an +Xid+ event.
+    def xid_event(header)
+      fields = {}
+      fields[:xid] = parser.read_uint64
+      fields
+    end
+
+    # Parse fields for an +Rand+ event.
+    def rand_event(header)
+      fields = {}
+      fields[:seed1] = parser.read_uint64
+      fields[:seed2] = parser.read_uint64
+      fields
     end
 
     # Parse column metadata within a table map event.
@@ -115,8 +153,9 @@ module MysqlBinlog
       end
     end
 
-    # Parse additional fields for a +Table_map+ event.
-    def table_map_event(header, fields)
+    # Parse fields for a +Table_map+ event.
+    def table_map_event(header)
+      fields = {}
       fields[:table_id] = parser.read_uint48
       fields[:flags] = parser.read_uint16
       map_entry = @table_map[fields[:table_id]] = {}
@@ -136,6 +175,7 @@ module MysqlBinlog
       end
 
       fields[:map_entry] = map_entry
+      fields
     end
 
     # Parse a single row image, which is comprised of a series of columns. Not
@@ -180,11 +220,12 @@ module MysqlBinlog
       row_images
     end
 
-    # Parse additional fields for any of the row-based replication row events:
+    # Parse fields for any of the row-based replication row events:
     # * +Write_rows+ which is used for +INSERT+.
     # * +Update_rows+ which is used for +UPDATE+.
     # * +Delete_rows+ which is used for +DELETE+.
-    def generic_rows_event(header, fields)
+    def generic_rows_event(header)
+      fields = {}
       table_id = parser.read_uint48
       fields[:table] = @table_map[table_id]
       fields[:flags] = parser.read_uint16
@@ -200,7 +241,9 @@ module MysqlBinlog
         columns_used[:after]  = parser.read_bit_array(columns)
       end
       fields[:row_image] = _generic_rows_event_row_images(header, fields, columns_used)
+      fields
     end
+
     alias :write_rows_event  :generic_rows_event
     alias :update_rows_event :generic_rows_event
     alias :delete_rows_event :generic_rows_event
