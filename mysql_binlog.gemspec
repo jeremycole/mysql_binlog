@@ -9,9 +9,9 @@ Gem::Specification.new do |s|
   s.homepage    = 'http://jcole.us/'
   s.files = [
     'lib/mysql_binlog.rb',
-    'lib/mysql_binlog/mysql_binlog.rb',
-    'lib/mysql_binlog/binlog_parser.rb',
-    'lib/mysql_binlog/binlog_event_field_parser.rb',
+    'lib/mysql_binlog/binlog.rb',
+    'lib/mysql_binlog/binlog_field_parser.rb',
+    'lib/mysql_binlog/binlog_event_parser.rb',
     'lib/mysql_binlog/reader/binlog_file_reader.rb',
     'lib/mysql_binlog/reader/binlog_stream_reader.rb',
   ]
