@@ -36,7 +36,7 @@ module MysqlBinlog
    type_array
   end
 
-  class BinlogParser
+  class BinlogFieldParser
     attr_accessor :binlog
     attr_accessor :reader
 

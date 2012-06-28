@@ -23,7 +23,7 @@ module MysqlBinlog
     :relaxed_unique_checks  => 1 << 27,
   }
 
-  class BinlogEventFieldParser
+  class BinlogEventParser
     attr_accessor :binlog
     attr_accessor :reader
     attr_accessor :parser
@@ -31,7 +31,7 @@ module MysqlBinlog
     def initialize(binlog_instance)
       @binlog = binlog_instance
       @reader = binlog_instance.reader
-      @parser = binlog_instance.parser
+      @parser = binlog_instance.field_parser
       @table_map = {}
     end
 

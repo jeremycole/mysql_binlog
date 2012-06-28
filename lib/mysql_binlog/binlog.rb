@@ -54,7 +54,7 @@ module MysqlBinlog
 
   # Format descriptions for fixed-length fields that may appear in the data
   # for each event. Additional fields may be dynamic and are parsed by the
-  # methods in the BinlogEventFieldParser class.
+  # methods in the BinlogEventParser class.
   EVENT_FORMATS = {
     :format_description_event => [
       { :name => :binlog_version,   :length => 2,   :format => "v"   },
@@ -92,16 +92,16 @@ module MysqlBinlog
   class Binlog
     attr_reader :fde
     attr_accessor :reader
-    attr_accessor :parser
-    attr_accessor :event_field_parser
+    attr_accessor :field_parser
+    attr_accessor :event_parser
     attr_accessor :filter_event_types
     attr_accessor :filter_flags
     attr_accessor :max_query_length
 
     def initialize(reader)
       @reader = reader
-      @parser = BinlogParser.new(self)
-      @event_field_parser = BinlogEventFieldParser.new(self)
+      @field_parser = BinlogFieldParser.new(self)
+      @event_parser = BinlogEventParser.new(self)
       @fde = nil
       @filter_event_types = nil
       @filter_flags = nil
@@ -119,15 +119,15 @@ module MysqlBinlog
     # in the EVENT_FORMATS hash.
     def read_fixed_fields(event_type, header)
       if EVENT_FORMATS.include? event_type
-        parser.read_and_unpack(EVENT_FORMATS[event_type])
+        field_parser.read_and_unpack(EVENT_FORMATS[event_type])
       end
     end
 
     # Read dynamic fields or fields that require more processing before being
     # saved in the event.
     def read_additional_fields(event_type, header, fields)
-      if event_field_parser.methods.include? event_type.to_s
-        event_field_parser.send(event_type, header, fields)
+      if event_parser.methods.include? event_type.to_s
+        event_parser.send(event_type, header, fields)
       end
     end
 
@@ -139,7 +139,7 @@ module MysqlBinlog
 
     # Read the common header for an event. Every event has a header.
     def read_event_header
-      header = parser.read_and_unpack(EVENT_HEADER)
+      header = field_parser.read_and_unpack(EVENT_HEADER)
 
       # Merge the read 'flags' bitmap with the EVENT_FLAGS hash to return
       # the flags by name instead of returning the bitmap as an integer.
