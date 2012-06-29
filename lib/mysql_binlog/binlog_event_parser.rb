@@ -251,10 +251,17 @@ module MysqlBinlog
       when :blob, :geometry
         { :length_size => parser.read_uint8 }
       when :string, :var_string
-        {
-          :real_type   => MYSQL_TYPES[parser.read_uint8],
-          :max_length  => parser.read_uint8,
-        }
+        # The :string type sets a :real_type field to indicate the actual type
+        # which is fundamentally incompatible with :string parsing. Setting
+        # a :type key in this hash will cause table_map_event to override the
+        # main field :type with the provided type here.
+        real_type = MYSQL_TYPES[parser.read_uint8]
+        case real_type
+        when :enum, :set
+          { :type => real_type, :size => parser.read_uint8 }
+        else
+          { :max_length  => parser.read_uint8 }
+        end
       end
     end
     private :_table_map_event_column_metadata_read
@@ -280,6 +287,14 @@ module MysqlBinlog
       columns_type = parser.read_uint8_array(columns).map { |c| MYSQL_TYPES[c] }
       columns_metadata = _table_map_event_column_metadata(columns_type)
       columns_nullable = parser.read_bit_array(columns)
+
+      # Remap overloaded types before we piece together the entire event.
+      columns.times do |c|
+        if columns_metadata[c] and columns_metadata[c][:type]
+          columns_type[c] = columns_metadata[c][:type]
+          columns_metadata[c].delete :type
+        end
+      end
 
       map_entry[:columns] = columns.times.map do |c|
         {

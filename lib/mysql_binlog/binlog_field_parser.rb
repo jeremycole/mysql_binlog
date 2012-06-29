@@ -80,6 +80,23 @@ module MysqlBinlog
       reader.read(8).unpack("Q").first
     end
 
+    def read_uint_by_size(size)
+      case size
+      when 1
+        read_uint8
+      when 2
+        read_uint16
+      when 3
+        read_uint24
+      when 4
+        read_uint32
+      when 6
+        read_uint48
+      when 8
+        read_uint64
+      end
+    end
+
     # Read a single-precision (4-byte) floating point number.
     def read_float
       reader.read(4).unpack("g").first
@@ -132,16 +149,7 @@ module MysqlBinlog
     # optional size parameter (default 1), followed by the string itself with
     # no termination character.
     def read_lpstring(size=1)
-      case size
-      when 1
-        length = read_uint8
-      when 2
-        length = read_uint16
-      when 3
-        length = read_uint24
-      when 4
-        length = read_uint32
-      end
+      length = read_uint_by_size(size)
       read_nstring(length)
     end
 
@@ -279,6 +287,8 @@ module MysqlBinlog
         convert_mysql_type_time(read_uint24)
       when :datetime
         convert_mysql_type_datetime(read_uint64)
+      when :enum, :set
+        read_uint_by_size(metadata[:size])
       #when :bit
       #when :newdecimal
       end
