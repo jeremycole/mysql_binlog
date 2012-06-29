@@ -272,6 +272,16 @@ All event types can be read, but may not be parsed, as not all event types are c
     <th colspan=3>Other Types</th>
   </tr>
   <tr>
+    <td>ENUM</td>
+    <td>MYSQL_TYPE_STRING</td>
+    <td>Supported, but values returned are internal representations.</td>
+  </tr>
+  <tr>
+    <td>SET</td>
+    <td>MYSQL_TYPE_STRING</td>
+    <td>Supported, but values returned are internal representations.</td>
+  </tr>
+  <tr>
     <td>BIT</td>
     <td>MYSQL_TYPE_BIT</td>
     <td>Unsupported.</td>
