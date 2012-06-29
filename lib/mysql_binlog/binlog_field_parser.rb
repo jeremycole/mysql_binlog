@@ -208,22 +208,57 @@ module MysqlBinlog
       when :varchar
         { :max_length => read_uint16 }
       when :bit
-        { :size => read_uint8 }
-      when :decimal
+        {
+          :size_bits  => read_uint8,
+          :size_bytes => read_uint8,
+        }
+      when :newdecimal
         {
           :precision => read_uint8,
           :decimals  => read_uint8,
         }
-      when :blob
+      when :blob, :geometry
         { :length_size => read_uint8 }
       when :string, :var_string
         {
-          :real_type   => read_uint8,
+          :real_type   => MYSQL_TYPES[read_uint8],
           :max_length  => read_uint8,
         }
-      when :geometry
-        { :length_size => read_uint8 }
       end
+    end
+
+    def extract_bits(value, bits, offset)
+      (value & ((1 << bits) - 1) << offset) >> offset
+    end
+
+    def convert_mysql_type_date(value)
+      "%04i-%02i-%02i" % [
+        extract_bits(value, 15, 9),
+        extract_bits(value,  4, 5),
+        extract_bits(value,  5, 0),
+      ]
+    end
+
+    def convert_mysql_type_time(value)
+      "%02i:%02i:%02i" % [
+        value / 10000,
+        (value % 10000) / 100,
+        value % 100,
+      ]
+    end
+
+    def convert_mysql_type_datetime(value)
+      date = value / 1000000
+      time = value % 1000000
+
+      "%04i-%02i-%02i %02i:%02i:%02i" % [
+        date / 10000,
+        (date % 10000) / 100,
+        date % 100,
+        time / 10000,
+        (time % 10000) / 100,
+        time % 100,
+      ]
     end
 
     # Read a single field, provided the MySQL column type as a symbol. Not all
@@ -248,22 +283,20 @@ module MysqlBinlog
         read_varstring
       when :varchar
         read_lpstring(2)
-      when :blob
+      when :blob, :geometry
         read_lpstring(metadata[:length_size])
       when :timestamp
         read_uint32
       when :year
         read_uint8 + 1900
-      #when :date
-      #when :time
-      #when :datetime
-      #when :newdate
+      when :date
+        convert_mysql_type_date(read_uint24)
+      when :time
+        convert_mysql_type_time(read_uint24)
+      when :datetime
+        convert_mysql_type_datetime(read_uint64)
       #when :bit
-      #when :decimal
       #when :newdecimal
-      #when :enum
-      #when :set
-      #when :geometry
       end
     end
 
