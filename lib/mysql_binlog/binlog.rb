@@ -1,9 +1,37 @@
 module MysqlBinlog
+  # This version of the binary log format is not supported by this library.
   class UnsupportedVersionException < Exception; end
+
+  # An error was encountered when trying to read the log, which was likely
+  # due to garbage data in the log. Continuing is likely impossible.
   class MalformedBinlogException < Exception; end
+
+  # When attempting a read, no data was returned.
   class ZeroReadException < Exception; end
+
+  # When attempting a read, fewer bytes of data were returned than were
+  # requested by the reader, likely indicating a truncated file or corrupted
+  # event.
   class ShortReadException < Exception; end
 
+  # Read a binary log, parsing and returning events.
+  #
+  # == Examples
+  #
+  # A basic example of using the Binlog class:
+  #
+  #   require 'mysql_binlog'
+  #   include MysqlBinlog
+  #
+  #   # Open a binary log from a file on disk.
+  #   binlog = Binlog.new(BinlogFileReader.new("mysql-bin.000001"))
+  #
+  #   # Iterate over all events from the log, printing the event type (such
+  #   # as :query_event, :write_rows_event, etc.)
+  #   binlog.each_event do |event|
+  #     puts event[:type]
+  #   end
+  #
   class Binlog
     attr_reader :fde
     attr_accessor :reader
@@ -35,6 +63,7 @@ module MysqlBinlog
     def skip_event(header)
       reader.skip(header)
     end
+    private :skip_event
 
     # Read the content of the event, which follows the header.
     def read_event_fields(header)
@@ -53,6 +82,7 @@ module MysqlBinlog
 
       fields
     end
+    private :read_event_fields
 
     # Scan events until finding one that isn't rejected by the filter rules.
     # If there are no filter rules, this will return the next event provided
@@ -130,6 +160,7 @@ module MysqlBinlog
         :server_version => fde[:server_version],
       }
     end
+    private :process_fde
 
     # Iterate through all events.
     def each_event

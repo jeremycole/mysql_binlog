@@ -1,4 +1,7 @@
 module MysqlBinlog
+  # Read a binary log from a stream dumped using the +MysqlBinlogDump+
+  # library to request a +COM_BINLOG_DUMP+ from a MySQL server via the
+  # +Mysql+ library.
   class BinlogStreamReader
     def initialize(connection, filename, position)
       require 'mysql_binlog_dump'
@@ -11,7 +14,6 @@ module MysqlBinlog
     end
 
     def rotate(filename, position)
-      puts "rotate called with #{filename}:#{position}"
       @filename = filename
       @position = position
     end

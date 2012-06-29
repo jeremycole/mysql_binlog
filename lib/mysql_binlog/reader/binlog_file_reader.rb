@@ -1,4 +1,5 @@
 module MysqlBinlog
+  # Read a binary log from a file on disk.
   class BinlogFileReader
     def initialize(filename)
       @filename = filename

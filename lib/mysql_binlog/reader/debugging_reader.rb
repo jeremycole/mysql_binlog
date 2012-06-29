@@ -9,13 +9,18 @@ module MysqlBinlog
     end
   end
 
+  # Wrap another Reader class, passing through all method calls, but optionally
+  # printing the contents of data read, and the method calls themselves. This
+  # is very useful for debugging the library itself, or if exceptions are
+  # getting thrown when reading a possibly unsupported log.
   class DebuggingReader
     def initialize(wrapped, options={})
       @wrapped = wrapped
       @options = options
     end
 
-    # Pass through all method calls.
+    # Pass through all method calls to the reader class we're delegating to.
+    # If various options are enabled, print debugging information.
     def method_missing(method, *args)
       if @options[:calls]
         puts "#{@wrapped.class}.#{method}"

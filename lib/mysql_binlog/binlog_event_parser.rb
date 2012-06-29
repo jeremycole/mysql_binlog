@@ -9,7 +9,7 @@ module MysqlBinlog
     { :name => :flags,            :length => 2,   :format => "v"   },
   ]
 
-  # Values for the 'flags' field that may appear in binlogs. There are
+  # Values for the +flags+ field that may appear in binary logs. There are
   # several other values that never appear in a file but may be used
   # in events in memory.
   EVENT_HEADER_FLAGS = {
@@ -76,15 +76,26 @@ module MysqlBinlog
     :relaxed_unique_checks  => 1 << 27,
   }
 
+  # A mapping array for all values that may appear in the +Intvar_type+ field
+  # of an intvar_event.
   INTVAR_EVENT_INTVAR_TYPES = [
     nil,
     :last_insert_id,
     :insert_id,
   ]
 
+  # Parse binary log events from a provided binary log. Must be driven
+  # externally, but handles all the details of parsing an event header
+  # and the content of the various event types.
   class BinlogEventParser
+    # The binary log object this event parser will parse events from.
     attr_accessor :binlog
+
+    # The binary log reader extracted from the binlog object for convenience.
     attr_accessor :reader
+
+    # The binary log field parser extracted from the binlog object for
+    # convenience.
     attr_accessor :parser
 
     def initialize(binlog_instance)
@@ -94,12 +105,12 @@ module MysqlBinlog
       @table_map = {}
     end
 
-    # Parse an event header, described by the EVENT_HEADER structure above.
+    # Parse an event header, described by the +EVENT_HEADER+ structure above.
     def event_header
       header = parser.read_and_unpack(EVENT_HEADER)
 
-      # Merge the read 'flags' bitmap with the EVENT_HEADER_FLAGS hash to return
-      # the flags by name instead of returning the bitmap as an integer.
+      # Merge the read +flags+ bitmap with the +EVENT_HEADER_FLAGS+ hash to
+      # return the flags by name instead of returning the bitmap as an integer.
       flags = EVENT_HEADER_FLAGS.inject([]) do |result, (flag_name, flag_bit_value)|
         if (header[:flags] & flag_bit_value) != 0
           result << flag_name
@@ -107,7 +118,7 @@ module MysqlBinlog
         result
       end
 
-      # Overwrite the integer version of 'flags' with the array of names.
+      # Overwrite the integer version of +flags+ with the array of names.
       header[:flags] = flags
 
       header
@@ -135,7 +146,7 @@ module MysqlBinlog
     # Parse a dynamic +status+ structure within a query_event, which consists
     # of a status_length (uint16) followed by a number of status variables
     # (determined by the +status_length+) each of which consist of:
-    # * A type code (uint8), one of QUERY_EVENT_STATUS_TYPES.
+    # * A type code (+uint8+), one of +QUERY_EVENT_STATUS_TYPES+.
     # * The content itself, determined by the type. Additional processing is
     #   required based on the type.
     def _query_event_status(header, fields)
@@ -176,6 +187,7 @@ module MysqlBinlog
       end
       status
     end
+    private :_query_event_status
 
     # Parse fields for a +Query+ event.
     def query_event(header)
@@ -217,13 +229,44 @@ module MysqlBinlog
       fields
     end
 
-    # Parse column metadata within a table map event.
-    def _table_map_event_column_metadata(columns_type)
-      length = parser.read_varint
-      columns_type.map do |c|
-        parser.read_mysql_type_metadata(c)
+    # Parse a number of bytes from the metadata section of a +Table_map+ event
+    # representing various fields based on the column type of the column
+    # being processed.
+    def _table_map_event_column_metadata_read(column_type)
+      case column_type
+      when :float, :double
+        { :size => parser.read_uint8 }
+      when :varchar
+        { :max_length => parser.read_uint16 }
+      when :bit
+        {
+          :size_bits  => parser.read_uint8,
+          :size_bytes => parser.read_uint8,
+        }
+      when :newdecimal
+        {
+          :precision => parser.read_uint8,
+          :decimals  => parser.read_uint8,
+        }
+      when :blob, :geometry
+        { :length_size => parser.read_uint8 }
+      when :string, :var_string
+        {
+          :real_type   => MYSQL_TYPES[parser.read_uint8],
+          :max_length  => parser.read_uint8,
+        }
       end
     end
+    private :_table_map_event_column_metadata_read
+
+    # Parse column metadata within a +Table_map+ event.
+    def _table_map_event_column_metadata(columns_type)
+      length = parser.read_varint
+      columns_type.map do |column|
+        _table_map_event_column_metadata_read(column)
+      end
+    end
+    private :_table_map_event_column_metadata
 
     # Parse fields for a +Table_map+ event.
     def table_map_event(header)
@@ -269,6 +312,7 @@ module MysqlBinlog
       end
       row_image
     end
+    private :_generic_rows_event_row_image
 
     # Parse the row images present in a row-based replication row event. This
     # is rather incomplete right now due missing support for many MySQL types,
@@ -291,6 +335,7 @@ module MysqlBinlog
       end
       row_images
     end
+    private :_generic_rows_event_row_images
 
     # Parse fields for any of the row-based replication row events:
     # * +Write_rows+ which is used for +INSERT+.

@@ -36,6 +36,8 @@ module MysqlBinlog
    type_array
   end
 
+  # Parse various types of standard and non-standard data types from a
+  # provided binary log using its reader to read data.
   class BinlogFieldParser
     attr_accessor :binlog
     attr_accessor :reader
@@ -201,36 +203,14 @@ module MysqlBinlog
       fields
     end
 
-    def read_mysql_type_metadata(column_type)
-      case column_type
-      when :float, :double
-        { :size => read_uint8 }
-      when :varchar
-        { :max_length => read_uint16 }
-      when :bit
-        {
-          :size_bits  => read_uint8,
-          :size_bytes => read_uint8,
-        }
-      when :newdecimal
-        {
-          :precision => read_uint8,
-          :decimals  => read_uint8,
-        }
-      when :blob, :geometry
-        { :length_size => read_uint8 }
-      when :string, :var_string
-        {
-          :real_type   => MYSQL_TYPES[read_uint8],
-          :max_length  => read_uint8,
-        }
-      end
-    end
-
+    # Extract a number of sequential bits at a given offset within an integer.
+    # This is used to unpack bit-packed fields.
     def extract_bits(value, bits, offset)
       (value & ((1 << bits) - 1) << offset) >> offset
     end
 
+    # Convert a packed +DATE+ from a uint24 into a string representing
+    # the date.
     def convert_mysql_type_date(value)
       "%04i-%02i-%02i" % [
         extract_bits(value, 15, 9),
@@ -239,6 +219,8 @@ module MysqlBinlog
       ]
     end
 
+    # Convert a packed +TIME+ from a uint24 into a string representing
+    # the time.
     def convert_mysql_type_time(value)
       "%02i:%02i:%02i" % [
         value / 10000,
@@ -247,6 +229,8 @@ module MysqlBinlog
       ]
     end
 
+    # Convert a packed +DATETIME+ from a uint64 into a string representing
+    # the date and time.
     def convert_mysql_type_datetime(value)
       date = value / 1000000
       time = value % 1000000
@@ -299,6 +283,5 @@ module MysqlBinlog
       #when :newdecimal
       end
     end
-
   end
 end
