@@ -175,3 +175,110 @@ All event types can be read, but may not be parsed, as not all event types are c
     <td>Unsupported.</td>
   </tr>
 </table>
+
+## Data Types Supported in Row Events ##
+
+<table>
+  <tr>
+    <th>Data Type</th>
+    <th>Binlog Type</th>
+    <th>Status</th>
+  </tr>
+  <tr>
+    <th colspan=3>Numeric Types</th>
+  </tr>
+  <tr>
+    <td>TINYINT</td>
+    <td>MYSQL_TYPE_TINY</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>SMALLINT</td>
+    <td>MYSQL_TYPE_SHORT</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>MEDIUMINT</td>
+    <td>MYSQL_TYPE_INT24</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>INT</td>
+    <td>MYSQL_TYPE_LONG</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>BIGINT</td>
+    <td>MYSQL_TYPE_LONGLONG</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>FLOAT</td>
+    <td>MYSQL_TYPE_FLOAT</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>DOUBLE</td>
+    <td>MYSQL_TYPE_DOUBLE</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>DECIMAL</td>
+    <td>MYSQL_TYPE_NEWDECIMAL</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <th colspan=3>Temporal Types</th>
+  </tr>
+  <tr>
+    <td>TIMESTAMP</td>
+    <td>MYSQL_TYPE_TIMESTAMP</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>DATETIME</td>
+    <td>MYSQL_TYPE_DATETIME</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>DATE</td>
+    <td>MYSQL_TYPE_DATE</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>TIME</td>
+    <td>MYSQL_TYPE_TIME</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>YEAR</td>
+    <td>MYSQL_TYPE_YEAR</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <th colspan=3>String Types</th>
+  </tr>
+  <tr>
+    <td>CHAR<br/>VARCHAR</td>
+    <td>MYSQL_TYPE_STRING</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <td>TINYBLOB<br/>BLOB<br/>MEDIUMBLOB<br/>LONGBLOB</td>
+    <td>MYSQL_TYPE_BLOB</td>
+    <td>Fully supported.</td>
+  </tr>
+  <tr>
+    <th colspan=3>Other Types</th>
+  </tr>
+  <tr>
+    <td>BIT</td>
+    <td>MYSQL_TYPE_BIT</td>
+    <td>Unsupported.</td>
+  </tr>
+  <tr>
+    <td>GEOMETRY</td>
+    <td>MYSQL_TYPE_GEOMETRY</td>
+    <td>Treated as BLOB.</td>
+  </tr>
+</table>
