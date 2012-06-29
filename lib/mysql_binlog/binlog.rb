@@ -39,6 +39,7 @@ module MysqlBinlog
     attr_accessor :event_parser
     attr_accessor :filter_event_types
     attr_accessor :filter_flags
+    attr_accessor :ignore_rotate
     attr_accessor :max_query_length
 
     def initialize(reader)
@@ -48,6 +49,7 @@ module MysqlBinlog
       @fde = nil
       @filter_event_types = nil
       @filter_flags = nil
+      @ignore_rotate = false
       @max_query_length = 1048576
     end
 
@@ -127,6 +129,7 @@ module MysqlBinlog
 
         case event_type
         when :rotate_event
+          next if ignore_rotate
           reader.rotate(fields[:name], fields[:pos])
         when :format_description_event
           process_fde(fields)
