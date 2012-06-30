@@ -169,9 +169,9 @@ module MysqlBinlog
           }
         when :charset
           {
-            :character_set_client => parser.read_uint16,
-            :collation_connection => parser.read_uint16,
-            :collation_server     => parser.read_uint16,
+            :character_set_client => COLLATION[parser.read_uint16],
+            :collation_connection => COLLATION[parser.read_uint16],
+            :collation_server     => COLLATION[parser.read_uint16],
           }
         when :time_zone
           parser.read_lpstring
