@@ -13,4 +13,5 @@ binlog.ignore_rotate = true
 
 binlog.each_event do |event|
   pp event
+  puts
 end
