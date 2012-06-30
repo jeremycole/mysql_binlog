@@ -9,7 +9,8 @@ reader = BinlogFileReader.new(ARGV.first)
 #reader = DebuggingReader.new(reader, :data => true, :calls => true)
 binlog = Binlog.new(reader)
 
-binlog.ignore_rotate = true
+#reader.tail = true
+#binlog.ignore_rotate = true
 
 binlog.each_event do |event|
   pp event
