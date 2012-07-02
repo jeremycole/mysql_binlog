@@ -1,7 +1,7 @@
 Gem::Specification.new do |s|
   s.name        = 'mysql_binlog'
   s.version     = File.open("VERSION").readline.chomp
-  s.date        = Time.now.strftime("%Y-%m-%e")
+  s.date        = Time.now.strftime("%Y-%m-%d")
   s.summary     = 'MySQL Binary Log Parser'
   s.description = 'Library for parsing MySQL binary logs in Ruby'
   s.authors     = [ 'Jeremy Cole' ]
