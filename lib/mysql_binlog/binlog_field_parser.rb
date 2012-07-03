@@ -174,10 +174,12 @@ module MysqlBinlog
     end
 
     # Read an arbitrary-length bitmap, provided its length. Returns an array
-    # of true/false values.
+    # of true/false values. This is used both for internal usage in RBR
+    # events that need bitmaps, as well as for the BIT type.
     def read_bit_array(length)
       data = reader.read((length+7)/8)
-      data.unpack("b*").first.bytes.to_a.map { |i| (i-48) == 1 }.shift(length)
+      data.unpack("B*").first.reverse.  # Unpack into a string of "10101"
+        split("").map { |c| c == "1" }.shift(length) # Return true/false array
     end
 
     # Read a uint32 value, and convert it to an array of symbols derived
@@ -289,7 +291,8 @@ module MysqlBinlog
         convert_mysql_type_datetime(read_uint64)
       when :enum, :set
         read_uint_by_size(metadata[:size])
-      #when :bit
+      when :bit
+        read_bit_array(metadata[:bits])
       #when :newdecimal
       end
     end

@@ -239,9 +239,10 @@ module MysqlBinlog
       when :varchar
         { :max_length => parser.read_uint16 }
       when :bit
+        bits  = parser.read_uint8
+        bytes = parser.read_uint8
         {
-          :size_bits  => parser.read_uint8,
-          :size_bytes => parser.read_uint8,
+          :bits  => (bytes * 8) + bits
         }
       when :newdecimal
         {
