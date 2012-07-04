@@ -3,29 +3,32 @@
 This library parses a MySQL binary log in pure Ruby and produces hashes as output, much like the following `Query` event:
 
     {:type=>:query_event,
-     :filename=>"/Users/jeremycole/t/mysql-bin.000001",
+     :position=>107,
+     :filename=>"mysql-bin.000001",
      :header=>
-      {:flags=>[],
-       :timestamp=>1340414127,
-       :event_type=>2,
+      {:event_type=>2,
        :server_id=>1,
+       :flags=>[],
        :event_length=>117,
+       :timestamp=>1340414127,
        :next_position=>224},
      :event=>
-      {:db=>"test",
-       :error_code=>0,
-       :status=>
-        {:charset=>
-          {:character_set_client=>33,
-           :collation_connection=>33,
-           :collation_server=>8},
-         :flags2=>[],
-         :catalog_nz=>"std",
-         :sql_mode=>0},
+      {:thread_id=>1,
        :query=>"create table a (id int, a char(100), primary key (id))",
-       :thread_id=>1,
-       :elapsed_time=>0},
-     :position=>107}
+       :status=>
+        {:sql_mode=>0,
+         :charset=>
+          {:character_set_client=>
+            {:character_set=>:utf8, :collation=>:utf8_general_ci},
+           :collation_connection=>
+            {:character_set=>:utf8, :collation=>:utf8_general_ci},
+           :collation_server=>
+            {:character_set=>:latin1, :collation=>:latin1_swedish_ci}},
+         :flags2=>[],
+         :catalog=>"std"},
+       :elapsed_time=>0,
+       :error_code=>0,
+       :db=>"test"}}
 
 # Status #
 
@@ -284,7 +287,7 @@ All event types can be read, but may not be parsed, as not all event types are c
   <tr>
     <td>BIT</td>
     <td>MYSQL_TYPE_BIT</td>
-    <td>Unsupported.</td>
+    <td>Supported, values returned as an array of true/false values.</td>
   </tr>
   <tr>
     <td>GEOMETRY</td>
