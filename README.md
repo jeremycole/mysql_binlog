@@ -105,7 +105,7 @@ All event types can be read, but may not be parsed, as not all event types are c
   <tr>
     <td>13</td>
     <td>rand_event</td>
-    <td>Fully supported but untested.</td>
+    <td>Fully supported with all fields parsed.</td>
   </tr>
   <tr>
     <td>14</td>
@@ -155,17 +155,17 @@ All event types can be read, but may not be parsed, as not all event types are c
   <tr>
     <td>23</td>
     <td>write_rows_event</td>
-    <td>Partially supported.</td>
+    <td>Fully supported with all fields parsed.</td>
   </tr>
   <tr>
     <td>24</td>
     <td>update_rows_event</td>
-    <td>Partially supported.</td>
+    <td>Fully supported with all fields parsed.</td>
   </tr>
   <tr>
     <td>25</td>
     <td>delete_rows_event</td>
-    <td>Partially supported.</td>
+    <td>Fully supported with all fields parsed.</td>
   </tr>
   <tr>
     <td>26</td>
@@ -292,6 +292,6 @@ All event types can be read, but may not be parsed, as not all event types are c
   <tr>
     <td>GEOMETRY</td>
     <td>MYSQL_TYPE_GEOMETRY</td>
-    <td>Treated as BLOB.</td>
+    <td>Supported, treated as BLOB.</td>
   </tr>
 </table>
