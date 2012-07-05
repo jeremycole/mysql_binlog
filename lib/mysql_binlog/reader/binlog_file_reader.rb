@@ -1,6 +1,9 @@
 module MysqlBinlog
   # Read a binary log from a file on disk.
   class BinlogFileReader
+    MAGIC_SIZE  = 4
+    MAGIC_VALUE = 1852400382
+
     attr_accessor :tail
 
     def initialize(filename)
@@ -8,14 +11,18 @@ module MysqlBinlog
       open_file(filename)
     end
 
+    def verify_magic
+      if (magic = read(MAGIC_SIZE).unpack("V").first) != MAGIC_VALUE
+        raise MalformedBinlogException.new("Magic number #{magic} is incorrect")
+      end
+    end
+
     def open_file(filename)
       @dirname  = File.dirname(filename)
       @filename = File.basename(filename)
       @binlog   = File.open(filename, mode="r")
 
-      if (magic = read(4).unpack("V").first) != 1852400382
-        raise MalformedBinlogException.new("Magic number #{magic} is incorrect")
-      end
+      verify_magic
     end
 
     def rotate(filename, position)
@@ -24,6 +31,9 @@ module MysqlBinlog
         open_file(@dirname + "/" + filename)
         seek(position)
       rescue Errno::ENOENT
+        # A rotate event will be seen in the previous log file before the
+        # new file exists. Retry a few times with a little sleep to give
+        # the server a chance to create the new file.
         if (retries -= 1) > 0
           sleep 0.01
           retry
@@ -42,7 +52,7 @@ module MysqlBinlog
     end
 
     def rewind
-      @binlog.rewind
+      seek(MAGIC_SIZE)
     end
 
     def seek(pos)
