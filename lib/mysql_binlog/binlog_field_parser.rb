@@ -182,35 +182,16 @@ module MysqlBinlog
         split("").map { |c| c == "1" }.shift(length) # Return true/false array
     end
 
-    # Read a uint32 value, and convert it to an array of symbols derived
-    # from a mapping table provided.
-    def read_uint32_bitmap_by_name(names)
-      value = read_uint32
+    # Read a uint value using the provided size, and convert it to an array
+    # of symbols derived from a mapping table provided.
+    def read_uint_bitmap_by_size_and_name(size, names)
+      value = read_uint_by_size(size)
       names.inject([]) do |result, (name, bit_value)|
         if (value & bit_value) != 0
           result << name
         end
         result
       end
-    end
-
-    # Read a series of fields, provided an array of field descriptions. This
-    # can be used to read many types of fixed-length structures.
-    def read_and_unpack(format_description)
-      @format_cache[format_description] ||= {}
-      this_format = @format_cache[format_description][:format] ||= 
-        format_description.inject("") { |o, f| o+(f[:format] || "") }
-      this_length = @format_cache[format_description][:length] ||=
-        format_description.inject(0)  { |o, f| o+(f[:length] || 0) }
-
-      fields = {}
-
-      fields_array = reader.read(this_length).unpack(this_format)
-      format_description.each_with_index do |field, index| 
-        fields[field[:name]] = fields_array[index]
-      end
-
-      fields
     end
 
     # Extract a number of sequential bits at a given offset within an integer.

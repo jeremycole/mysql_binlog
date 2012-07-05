@@ -69,12 +69,10 @@ module MysqlBinlog
 
     # Read the content of the event, which follows the header.
     def read_event_fields(header)
-      event_type = EVENT_TYPES[header[:event_type]]
-
       # Delegate the parsing of the event content to a method of the same name
       # in BinlogEventParser.
-      if event_parser.methods.include? event_type.to_s
-        fields = event_parser.send(event_type, header)
+      if event_parser.methods.include? header[:event_type].to_s
+        fields = event_parser.send(header[:event_type], header)
       end
 
       # Anything left unread at this point is skipped based on the event length
@@ -102,10 +100,8 @@ module MysqlBinlog
           return nil
         end
 
-        event_type = EVENT_TYPES[header[:event_type]]
-        
         if @filter_event_types
-          unless @filter_event_types.include? event_type
+          unless @filter_event_types.include? header[:event_type]
             skip_this_event = true
           end
         end
@@ -119,7 +115,7 @@ module MysqlBinlog
         # Never skip over rotate_event or format_description_event as they
         # are critical to understanding the format of this event stream.
         if skip_this_event
-          unless [:rotate_event, :format_description_event].include? event_type
+          unless [:rotate_event, :format_description_event].include? header[:event_type]
             skip_event(header)
             next
           end
@@ -127,7 +123,7 @@ module MysqlBinlog
         
         fields = read_event_fields(header)
 
-        case event_type
+        case header[:event_type]
         when :rotate_event
           next if ignore_rotate
           reader.rotate(fields[:name], fields[:pos])
@@ -139,7 +135,7 @@ module MysqlBinlog
       end
 
       {
-        :type     => event_type,
+        :type     => header[:event_type],
         :filename => filename,
         :position => position,
         :header   => header,

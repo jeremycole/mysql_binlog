@@ -1,25 +1,4 @@
 module MysqlBinlog
-  # A common fixed-length header that is included with each event.
-  EVENT_HEADER = [
-    { :name => :timestamp,        :length => 4,   :format => "V"   },
-    { :name => :event_type,       :length => 1,   :format => "C"   },
-    { :name => :server_id,        :length => 4,   :format => "V"   },
-    { :name => :event_length,     :length => 4,   :format => "V"   },
-    { :name => :next_position,    :length => 4,   :format => "V"   },
-    { :name => :flags,            :length => 2,   :format => "v"   },
-  ]
-
-  # Values for the +flags+ field that may appear in binary logs. There are
-  # several other values that never appear in a file but may be used
-  # in events in memory.
-  EVENT_HEADER_FLAGS = {
-    :binlog_in_use   => 0x01,
-    :thread_specific => 0x04,
-    :suppress_use    => 0x08,
-    :artificial      => 0x20,
-    :relay_log       => 0x40,
-  }
-
   # An array to quickly map an integer event type to its symbol.
   EVENT_TYPES = [
     :unknown_event,             #  0
@@ -51,6 +30,17 @@ module MysqlBinlog
     :incident_event,            # 26
     :heartbeat_log_event,       # 27
   ]
+
+  # Values for the +flags+ field that may appear in binary logs. There are
+  # several other values that never appear in a file but may be used
+  # in events in memory.
+  EVENT_HEADER_FLAGS = {
+    :binlog_in_use   => 0x01,
+    :thread_specific => 0x04,
+    :suppress_use    => 0x08,
+    :artificial      => 0x20,
+    :relay_log       => 0x40,
+  }
 
   # A mapping array for all values that may appear in the +status+ field of
   # a query_event.
@@ -84,6 +74,21 @@ module MysqlBinlog
     :insert_id,
   ]
 
+  # A mapping array for all values that may appear in the +flags+ field of a
+  # table_map_event.
+  TABLE_MAP_EVENT_FLAGS = {
+    :bit_len_exact          => 1 << 0,
+  }
+
+  # A mapping array for all values that may appear in the +flags+ field of a
+  # write_rows_event, update_rows_event, or delete_rows_event.
+  GENERIC_ROWS_EVENT_FLAGS = {
+    :stmt_end               => 1 << 0,
+    :no_foreign_key_checks  => 1 << 1,
+    :relaxed_unique_checks  => 1 << 2,
+    :complete_rows          => 1 << 3,
+  }
+
   # Parse binary log events from a provided binary log. Must be driven
   # externally, but handles all the details of parsing an event header
   # and the content of the various event types.
@@ -105,22 +110,15 @@ module MysqlBinlog
       @table_map = {}
     end
 
-    # Parse an event header, described by the +EVENT_HEADER+ structure above.
+    # Parse an event header, which is consistent for all event types.
     def event_header
-      header = parser.read_and_unpack(EVENT_HEADER)
-
-      # Merge the read +flags+ bitmap with the +EVENT_HEADER_FLAGS+ hash to
-      # return the flags by name instead of returning the bitmap as an integer.
-      flags = EVENT_HEADER_FLAGS.inject([]) do |result, (flag_name, flag_bit_value)|
-        if (header[:flags] & flag_bit_value) != 0
-          result << flag_name
-        end
-        result
-      end
-
-      # Overwrite the integer version of +flags+ with the array of names.
-      header[:flags] = flags
-
+      header = {}
+      header[:timestamp]      = parser.read_uint32
+      header[:event_type]     = EVENT_TYPES[parser.read_uint8]
+      header[:server_id]      = parser.read_uint32
+      header[:event_length]   = parser.read_uint32
+      header[:next_position]  = parser.read_uint32
+      header[:flags] = parser.read_uint_bitmap_by_size_and_name(2, EVENT_HEADER_FLAGS)
       header
     end
 
@@ -157,7 +155,7 @@ module MysqlBinlog
         status_type = QUERY_EVENT_STATUS_TYPES[parser.read_uint8]
         status[status_type] = case status_type
         when :flags2
-          parser.read_uint32_bitmap_by_name(QUERY_EVENT_FLAGS2)
+          parser.read_uint_bitmap_by_size_and_name(4, QUERY_EVENT_FLAGS2)
         when :sql_mode
           parser.read_uint64
         when :catalog_deprecated
@@ -280,7 +278,7 @@ module MysqlBinlog
     def table_map_event(header)
       fields = {}
       fields[:table_id] = parser.read_uint48
-      fields[:flags] = parser.read_uint16
+      fields[:flags] = parser.read_uint_bitmap_by_size_and_name(2, TABLE_MAP_EVENT_FLAGS)
       map_entry = @table_map[fields[:table_id]] = {}
       map_entry[:db] = parser.read_lpstringz
       map_entry[:table] = parser.read_lpstringz
@@ -338,7 +336,7 @@ module MysqlBinlog
       end_position = reader.position + reader.remaining(header)
       while reader.position < end_position
         row_image = {}
-        case EVENT_TYPES[header[:event_type]]
+        case header[:event_type]
         when :write_rows_event
           row_image[:after]  = _generic_rows_event_row_image(header, fields, columns_used[:after])
         when :delete_rows_event
@@ -361,10 +359,10 @@ module MysqlBinlog
       fields = {}
       table_id = parser.read_uint48
       fields[:table] = @table_map[table_id]
-      fields[:flags] = parser.read_uint16
+      fields[:flags] = parser.read_uint_bitmap_by_size_and_name(2, GENERIC_ROWS_EVENT_FLAGS)
       columns = parser.read_varint
       columns_used = {}
-      case EVENT_TYPES[header[:event_type]]
+      case header[:event_type]
       when :write_rows_event
         columns_used[:after]  = parser.read_bit_array(columns)
       when :delete_rows_event
