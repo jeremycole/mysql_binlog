@@ -163,6 +163,10 @@ module MysqlBinlog
 
     # Iterate through all events.
     def each_event
+      unless block_given?
+        return Enumerable::Enumerator.new(self, :each_event)
+      end
+
       while event = read_event
         yield event
       end
