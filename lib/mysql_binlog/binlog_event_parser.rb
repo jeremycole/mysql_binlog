@@ -1,5 +1,7 @@
 module MysqlBinlog
   # An array to quickly map an integer event type to its symbol.
+  #
+  # Enumerated in sql/log_event.h line ~539 as Log_event_type
   EVENT_TYPES = [
     :unknown_event,             #  0
     :start_event_v3,            #  1 (deprecated)
@@ -34,59 +36,75 @@ module MysqlBinlog
   # Values for the +flags+ field that may appear in binary logs. There are
   # several other values that never appear in a file but may be used
   # in events in memory.
+  #
+  # Defined in sql/log_event.h line ~448
   EVENT_HEADER_FLAGS = {
-    :binlog_in_use   => 0x01,
-    :thread_specific => 0x04,
-    :suppress_use    => 0x08,
-    :artificial      => 0x20,
-    :relay_log       => 0x40,
+    :binlog_in_use   => 0x01, # LOG_EVENT_BINLOG_IN_USE_F
+    :thread_specific => 0x04, # LOG_EVENT_THREAD_SPECIFIC_F
+    :suppress_use    => 0x08, # LOG_EVENT_SUPPRESS_USE_F
+    :artificial      => 0x20, # LOG_EVENT_ARTIFICIAL_F
+    :relay_log       => 0x40, # LOG_EVENT_RELAY_LOG_F
   }
 
   # A mapping array for all values that may appear in the +status+ field of
   # a query_event.
+  #
+  # Defined in sql/log_event.h line ~316
   QUERY_EVENT_STATUS_TYPES = [
-    :flags2,                    # 0
-    :sql_mode,                  # 1
-    :catalog_deprecated,        # 2
-    :auto_increment,            # 3
-    :charset,                   # 4
-    :time_zone,                 # 5
-    :catalog,                   # 6
-    :lc_time_names,             # 7
-    :charset_database,          # 8
-    :table_map_for_update,      # 9
+    :flags2,                    #  0 (Q_FLAGS2_CODE)
+    :sql_mode,                  #  1 (Q_SQL_MODE_CODE)
+    :catalog_deprecated,        #  2 (Q_CATALOG_CODE)
+    :auto_increment,            #  3 (Q_AUTO_INCREMENT)
+    :charset,                   #  4 (Q_CHARSET_CODE)
+    :time_zone,                 #  5 (Q_TIME_ZONE_CODE)
+    :catalog,                   #  6 (Q_CATALOG_NZ_CODE)
+    :lc_time_names,             #  7 (Q_LC_TIME_NAMES_CODE)
+    :charset_database,          #  8 (Q_CHARSET_DATABASE_CODE)
+    :table_map_for_update,      #  9 (Q_TABLE_MAP_FOR_UPDATE_CODE)
+    :master_data_written,       # 10 (Q_MASTER_DATA_WRITTEN_CODE)
+    :invoker,                   # 11 (Q_INVOKER)
   ]
 
   # A mapping hash for all values that may appear in the +flags2+ field of
   # a query_event.
+  #
+  # Defined in sql/log_event.h line ~521 in OPTIONS_WRITTEN_TO_BIN_LOG
+  #
+  # Defined in sql/sql_priv.h line ~84
   QUERY_EVENT_FLAGS2 = {
-    :auto_is_null           => 1 << 14,
-    :not_autocommit         => 1 << 19,
-    :no_foreign_key_checks  => 1 << 26,
-    :relaxed_unique_checks  => 1 << 27,
+    :auto_is_null           => 1 << 14, # OPTION_AUTO_IS_NULL
+    :not_autocommit         => 1 << 19, # OPTION_NOT_AUTOCOMMIT
+    :no_foreign_key_checks  => 1 << 26, # OPTION_NO_FOREIGN_KEY_CHECKS
+    :relaxed_unique_checks  => 1 << 27, # OPTION_RELAXED_UNIQUE_CHECKS
   }
 
   # A mapping array for all values that may appear in the +Intvar_type+ field
   # of an intvar_event.
+  #
+  # Enumerated in sql/log_event.h line ~613 as Int_event_type
   INTVAR_EVENT_INTVAR_TYPES = [
-    nil,
-    :last_insert_id,
-    :insert_id,
+    nil,                # INVALID_INT_EVENT
+    :last_insert_id,    # LAST_INSERT_ID_EVENT
+    :insert_id,         # INSERT_ID_EVENT
   ]
 
   # A mapping array for all values that may appear in the +flags+ field of a
   # table_map_event.
+  #
+  # Enumerated in sql/log_event.h line ~3413 within Table_map_log_event
   TABLE_MAP_EVENT_FLAGS = {
-    :bit_len_exact          => 1 << 0,
+    :bit_len_exact          => 1 << 0,  # TM_BIT_LEN_EXACT_F
   }
 
   # A mapping array for all values that may appear in the +flags+ field of a
   # write_rows_event, update_rows_event, or delete_rows_event.
+  #
+  # Enumerated in sql/log_event.h line ~3533 within Rows_log_event
   GENERIC_ROWS_EVENT_FLAGS = {
-    :stmt_end               => 1 << 0,
-    :no_foreign_key_checks  => 1 << 1,
-    :relaxed_unique_checks  => 1 << 2,
-    :complete_rows          => 1 << 3,
+    :stmt_end               => 1 << 0,  # STMT_END_F
+    :no_foreign_key_checks  => 1 << 1,  # NO_FOREIGN_KEY_CHECKS_F
+    :relaxed_unique_checks  => 1 << 2,  # RELAXED_UNIQUE_CHECKS_F
+    :complete_rows          => 1 << 3,  # COMPLETE_ROWS_F
   }
 
   # Parse binary log events from a provided binary log. Must be driven
@@ -111,6 +129,10 @@ module MysqlBinlog
     end
 
     # Parse an event header, which is consistent for all event types.
+    #
+    # Documented in sql/log_event.h line ~749 as "Common-Header"
+    #
+    # Implemented in sql/log_event.cc line ~936 in Log_event::write_header
     def event_header
       header = {}
       header[:timestamp]      = parser.read_uint32
@@ -123,6 +145,8 @@ module MysqlBinlog
     end
 
     # Parse fields for a +Format_description+ event.
+    #
+    # Implemented in sql/log_event.cc line ~4123 in Format_description_log_event::write
     def format_description_event(header)
       fields = {}
       fields[:binlog_version]   = parser.read_uint16
@@ -133,6 +157,8 @@ module MysqlBinlog
     end
 
     # Parse fields for a +Rotate+ event.
+    #
+    # Implemented in sql/log_event.cc line ~5157 in Rotate_log_event::write
     def rotate_event(header)
       fields = {}
       fields[:pos] = parser.read_uint64
@@ -196,6 +222,8 @@ module MysqlBinlog
     private :_query_event_status
 
     # Parse fields for a +Query+ event.
+    #
+    # Implemented in sql/log_event.cc line ~2214 in Query_log_event::write
     def query_event(header)
       fields = {}
       fields[:thread_id] = parser.read_uint32
@@ -210,6 +238,8 @@ module MysqlBinlog
     end
 
     # Parse fields for an +Intvar+ event.
+    #
+    # Implemented in sql/log_event.cc line ~5326 in Intvar_log_event::write
     def intvar_event(header)
       fields = {}
 
@@ -221,6 +251,8 @@ module MysqlBinlog
     end
 
     # Parse fields for an +Xid+ event.
+    #
+    # Implemented in sql/log_event.cc line ~5559 in Xid_log_event::write
     def xid_event(header)
       fields = {}
       fields[:xid] = parser.read_uint64
@@ -228,6 +260,8 @@ module MysqlBinlog
     end
 
     # Parse fields for an +Rand+ event.
+    #
+    # Implemented in sql/log_event.cc line ~5454 in Rand_log_event::write
     def rand_event(header)
       fields = {}
       fields[:seed1] = parser.read_uint64
@@ -283,6 +317,10 @@ module MysqlBinlog
     private :_table_map_event_column_metadata
 
     # Parse fields for a +Table_map+ event.
+    #
+    # Implemented in sql/log_event.cc line ~8638
+    # in Table_map_log_event::write_data_header
+    # and Table_map_log_event::write_data_body
     def table_map_event(header)
       fields = {}
       fields[:table_id] = parser.read_uint48
@@ -371,6 +409,10 @@ module MysqlBinlog
     # * +Write_rows+ which is used for +INSERT+.
     # * +Update_rows+ which is used for +UPDATE+.
     # * +Delete_rows+ which is used for +DELETE+.
+    #
+    # Implemented in sql/log_event.cc line ~8039
+    # in Rows_log_event::write_data_header
+    # and Rows_log_event::write_data_body
     def generic_rows_event(header)
       fields = {}
       table_id = parser.read_uint48
