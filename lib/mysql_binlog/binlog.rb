@@ -14,6 +14,13 @@ module MysqlBinlog
   # event.
   class ShortReadException < Exception; end
 
+  # After an event or other structure was fully read, the log position exceeded
+  # the end of the structure being read. This would indicate a bug in parsing
+  # the fields in the structure. For example, reading garbage data for a length
+  # field may cause a string read based on that length to read data well past
+  # the end of the event or structure. This is essentially always fatal.
+  class OverReadException < Exception; end
+
   # Read a binary log, parsing and returning events.
   #
   # == Examples
@@ -75,9 +82,18 @@ module MysqlBinlog
         fields = event_parser.send(header[:event_type], header)
       end
 
+      # Check if we've read past the end of the event. This is normally because
+      # of an unsupported substructure in the event causing field misalignment
+      # or a bug in the event reader method in BinlogEventParser. This may also
+      # be due to user error in providing an initial start position or later
+      # seeking to a position which is not a valid event start position.
+      if reader.position > header[:next_position]
+        raise OverReadException.new("Read past end of event; corrupted event, bad start position, or bug in mysql_binlog?")
+      end
+
       # Anything left unread at this point is skipped based on the event length
       # provided in the header. In this way, it is possible to skip over events
-      # that are not able to be parsed correctly by this library.
+      # that are not able to be parsed completely by this library.
       skip_event(header)
 
       fields
@@ -120,7 +136,7 @@ module MysqlBinlog
             next
           end
         end
-        
+
         fields = read_event_fields(header)
 
         case header[:event_type]

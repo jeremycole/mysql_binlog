@@ -183,6 +183,14 @@ module MysqlBinlog
           parser.read_uint64
         end
       end
+
+      # We may have read too much due to an invalid string read especially.
+      # Raise a more specific exception here instead of the generic
+      # OverReadException from the entire event.
+      if reader.position > end_position
+        raise OverReadException.new("Read past end of Query event status field")
+      end
+
       status
     end
     private :_query_event_status
@@ -347,6 +355,14 @@ module MysqlBinlog
         end
         row_images << row_image
       end
+
+      # We may have read too much, especially if any of the fields in the row
+      # image were misunderstood. Raise a more specific exception here instead
+      # of the generic OverReadException from the entire event.
+      if reader.position > end_position
+        raise OverReadException.new("Read past end of row image")
+      end
+
       row_images
     end
     private :_generic_rows_event_row_images
