@@ -99,12 +99,12 @@ module MysqlBinlog
 
     # Read a single-precision (4-byte) floating point number.
     def read_float
-      reader.read(4).unpack("g").first
+      reader.read(4).unpack("e").first
     end
 
     # Read a double-precision (8-byte) floating point number.
     def read_double
-      reader.read(8).unpack("G").first
+      reader.read(8).unpack("E").first
     end
 
     # Read a variable-length "Length Coded Binary" integer. This is derived
