@@ -45,7 +45,7 @@ All event types can be read, but may not be parsed, as not all event types are c
   <tr>
     <td>1</td>
     <td>start_event_v3</td>
-    <td>Unsupported.</td>
+    <td>Unsupported (deprecated).</td>
   </tr>
   <tr>
     <td>2</td>
@@ -70,17 +70,17 @@ All event types can be read, but may not be parsed, as not all event types are c
   <tr>
     <td>6</td>
     <td>load_event</td>
-    <td>Unsupported.</td>
+    <td>Unsupported (deprecated).</td>
   </tr>
   <tr>
     <td>7</td>
     <td>slave_event</td>
-    <td>Unsupported.</td>
+    <td>Unsupported (deprecated).</td>
   </tr>
   <tr>
     <td>8</td>
     <td>create_file_event</td>
-    <td>Unsupported.</td>
+    <td>Unsupported (deprecated).</td>
   </tr>
   <tr>
     <td>9</td>
@@ -90,7 +90,7 @@ All event types can be read, but may not be parsed, as not all event types are c
   <tr>
     <td>10</td>
     <td>exec_load_event</td>
-    <td>Unsupported.</td>
+    <td>Unsupported (deprecated).</td>
   </tr>
   <tr>
     <td>11</td>
@@ -100,7 +100,7 @@ All event types can be read, but may not be parsed, as not all event types are c
   <tr>
     <td>12</td>
     <td>new_load_event</td>
-    <td>Unsupported.</td>
+    <td>Unsupported (deprecated).</td>
   </tr>
   <tr>
     <td>13</td>

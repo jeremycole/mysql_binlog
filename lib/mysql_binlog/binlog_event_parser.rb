@@ -2,18 +2,18 @@ module MysqlBinlog
   # An array to quickly map an integer event type to its symbol.
   EVENT_TYPES = [
     :unknown_event,             #  0
-    :start_event_v3,            #  1
+    :start_event_v3,            #  1 (deprecated)
     :query_event,               #  2
     :stop_event,                #  3
     :rotate_event,              #  4
     :intvar_event,              #  5
-    :load_event,                #  6
-    :slave_event,               #  7
-    :create_file_event,         #  8
+    :load_event,                #  6 (deprecated)
+    :slave_event,               #  7 (deprecated)
+    :create_file_event,         #  8 (deprecated)
     :append_block_event,        #  9
-    :exec_load_event,           # 10
+    :exec_load_event,           # 10 (deprecated)
     :delete_file_event,         # 11
-    :new_load_event,            # 12
+    :new_load_event,            # 12 (deprecated)
     :rand_event,                # 13
     :user_var_event,            # 14
     :format_description_event,  # 15
@@ -21,9 +21,9 @@ module MysqlBinlog
     :begin_load_query_event,    # 17
     :execute_load_query_event,  # 18
     :table_map_event,           # 19
-    :pre_ga_write_rows_event,   # 20
-    :pre_ga_update_rows_event,  # 21
-    :pre_ga_delete_rows_event,  # 22
+    :pre_ga_write_rows_event,   # 20 (deprecated)
+    :pre_ga_update_rows_event,  # 21 (deprecated)
+    :pre_ga_delete_rows_event,  # 22 (deprecated)
     :write_rows_event,          # 23
     :update_rows_event,         # 24
     :delete_rows_event,         # 25
