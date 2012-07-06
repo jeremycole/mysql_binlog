@@ -141,8 +141,9 @@ module MysqlBinlog
 
         case header[:event_type]
         when :rotate_event
-          next if ignore_rotate
-          reader.rotate(fields[:name], fields[:pos])
+          unless ignore_rotate
+            reader.rotate(fields[:name], fields[:pos])
+          end
         when :format_description_event
           process_fde(fields)
         end
