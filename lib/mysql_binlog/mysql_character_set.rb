@@ -1,5 +1,6 @@
 module MysqlBinlog
-  #--
+  # A hash to map MySQL collation name to ID and character set name.
+  #
   # This hash is produced by the following query:
   #   SELECT concat(
   #     "    :",
@@ -12,9 +13,7 @@ module MysqlBinlog
   #   ) AS ruby_code
   #   FROM information_schema.collations
   #   ORDER BY collation_name
-  #++
   #
-  # A hash to map collation name to ID and character set name.
   COLLATION_HASH = {
     :armscii8_bin             => { :id =>  64, :character_set => :armscii8 },
     :armscii8_general_ci      => { :id =>  32, :character_set => :armscii8 },
