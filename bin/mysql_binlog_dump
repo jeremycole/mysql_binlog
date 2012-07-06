@@ -1,16 +1,99 @@
 #!/usr/bin/env ruby
 
-require 'pp'
 require 'mysql_binlog'
+require 'getoptlong'
+require 'ostruct'
+require 'pp'
 
 include MysqlBinlog
 
-reader = BinlogFileReader.new(ARGV.first)
-#reader = DebuggingReader.new(reader, :data => true, :calls => true)
+def usage(exit_code, message = nil)
+  print "Error: #{message}\n\n" unless message.nil?
+
+  print <<'END_OF_USAGE'
+
+Usage:
+  To read from a binary log file on disk:
+    mysql_binlog_dump [options] -f <filename>
+
+  --help, -?
+    Show this help.
+
+  --file, -f <filename>
+    Read from a binary log file on disk.
+
+  --debug, -d
+    Debug reading from the binary log, showing calls into the reader and the
+    data bytes read. This is useful for debugging the mysql_binlog library
+    as well as debugging problems with binary logs.
+
+  --tail, -t
+    When reading from a file, follow the end of the binary log file instead
+    of exiting when reaching the end. Exit with Control-C.
+
+  --rotate, -r
+    When reading from a file, follow the rotate events which may be at the
+    end of a file (due to log rotation) so that the stream can be followed
+    through multiple files. This is especially useful with --tail.
+
+END_OF_USAGE
+
+  exit exit_code
+end
+
+
+@options = OpenStruct.new
+@options.file = nil
+@options.debug = false
+@options.tail = false
+@options.rotate = false
+
+getopt_options = [
+  [ "--help",             "-?",     GetoptLong::NO_ARGUMENT ],
+  [ "--file",             "-f",     GetoptLong::REQUIRED_ARGUMENT ],
+  [ "--debug",            "-d",     GetoptLong::NO_ARGUMENT ],
+  [ "--tail",             "-t",     GetoptLong::NO_ARGUMENT ],
+  [ "--rotate",           "-r",     GetoptLong::NO_ARGUMENT ],
+]
+
+getopt = GetoptLong.new(*getopt_options)
+
+getopt.each do |opt, arg|
+  case opt
+  when "--help"
+    usage 0
+  when "--file"
+    @options.file = arg
+  when "--debug"
+    @options.debug = true
+  when "--tail"
+    @options.tail = true
+  when "--rotate"
+    @options.rotate = true
+  end
+end
+
+unless @options.file
+  usage 1, "A file must be provided with --file/-f"
+end
+
+reader = BinlogFileReader.new(@options.file)
+if @options.debug
+  reader = DebuggingReader.new(reader, :data => true, :calls => true)
+end
 binlog = Binlog.new(reader)
 
-#reader.tail = true
-#binlog.ignore_rotate = true
+if @options.tail
+  reader.tail = true
+else
+  reader.tail = false
+end
+
+if @options.rotate
+  binlog.ignore_rotate = false
+else
+  binlog.ignore_rotate = true
+end
 
 binlog.each_event do |event|
   pp event
