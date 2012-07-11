@@ -69,10 +69,22 @@ module MysqlBinlog
       reader.read(4).unpack("V").first
     end
 
+    # Read an unsigned 40-bit (5-byte) integer.
+    def read_uint40
+      a, b = reader.read(5).unpack("CV")
+      a + (b << 8)
+    end
+
     # Read an unsigned 48-bit (6-byte) integer.
     def read_uint48
       a, b, c = reader.read(6).unpack("vvv")
       a + (b << 16) + (c << 32)
+    end
+
+    # Read an unsigned 56-bit (7-byte) integer.
+    def read_uint56
+      a, b, c = reader.read(7).unpack("CvV")
+      a + (b << 8) + (c << 24)
     end
 
     # Read an unsigned 64-bit (8-byte) integer.
@@ -90,8 +102,12 @@ module MysqlBinlog
         read_uint24
       when 4
         read_uint32
+      when 5
+        read_uint40
       when 6
         read_uint48
+      when 7
+        read_uint56
       when 8
         read_uint64
       end
@@ -273,8 +289,11 @@ module MysqlBinlog
       when :enum, :set
         read_uint_by_size(metadata[:size])
       when :bit
-        read_bit_array(metadata[:bits])
+        byte_length = (metadata[:bits]+7)/8
+        read_uint_by_size(byte_length)
       #when :newdecimal
+      else
+        raise UnsupportedTypeException.new("Type #{type} is not supported.")
       end
     end
   end
