@@ -33,6 +33,15 @@ module MysqlBinlog
     :heartbeat_log_event,       # 27
   ]
 
+  # A list of supported row-based replication event types. Since these all
+  # have an identical structure, this list can be used by other programs to
+  # know which events can be treated as row events.
+  ROW_EVENT_TYPES = [
+    :write_rows_event,
+    :update_rows_event,
+    :delete_rows_event,
+  ]
+
   # Values for the +flags+ field that may appear in binary logs. There are
   # several other values that never appear in a file but may be used
   # in events in memory.
