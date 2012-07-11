@@ -2,6 +2,9 @@ module MysqlBinlog
   # This version of the binary log format is not supported by this library.
   class UnsupportedVersionException < Exception; end
 
+  # This field type is not supported by this library.
+  class UnsupportedTypeException < Exception; end
+
   # An error was encountered when trying to read the log, which was likely
   # due to garbage data in the log. Continuing is likely impossible.
   class MalformedBinlogException < Exception; end
