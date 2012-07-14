@@ -1,37 +1,44 @@
 module MysqlBinlog
-  # An array to quickly map an integer event type to its symbol.
+  # A hash of all possible event type IDs.
   #
   # Enumerated in sql/log_event.h line ~539 as Log_event_type
-  EVENT_TYPES = [
-    :unknown_event,             #  0
-    :start_event_v3,            #  1 (deprecated)
-    :query_event,               #  2
-    :stop_event,                #  3
-    :rotate_event,              #  4
-    :intvar_event,              #  5
-    :load_event,                #  6 (deprecated)
-    :slave_event,               #  7 (deprecated)
-    :create_file_event,         #  8 (deprecated)
-    :append_block_event,        #  9
-    :exec_load_event,           # 10 (deprecated)
-    :delete_file_event,         # 11
-    :new_load_event,            # 12 (deprecated)
-    :rand_event,                # 13
-    :user_var_event,            # 14
-    :format_description_event,  # 15
-    :xid_event,                 # 16
-    :begin_load_query_event,    # 17
-    :execute_load_query_event,  # 18
-    :table_map_event,           # 19
-    :pre_ga_write_rows_event,   # 20 (deprecated)
-    :pre_ga_update_rows_event,  # 21 (deprecated)
-    :pre_ga_delete_rows_event,  # 22 (deprecated)
-    :write_rows_event,          # 23
-    :update_rows_event,         # 24
-    :delete_rows_event,         # 25
-    :incident_event,            # 26
-    :heartbeat_log_event,       # 27
-  ]
+  EVENT_TYPES_HASH = {
+    :unknown_event              =>  0,  #
+    :start_event_v3             =>  1,  # (deprecated)
+    :query_event                =>  2,  #
+    :stop_event                 =>  3,  #
+    :rotate_event               =>  4,  #
+    :intvar_event               =>  5,  #
+    :load_event                 =>  6,  # (deprecated)
+    :slave_event                =>  7,  # (deprecated)
+    :create_file_event          =>  8,  # (deprecated)
+    :append_block_event         =>  9,  #
+    :exec_load_event            => 10,  # (deprecated)
+    :delete_file_event          => 11,  #
+    :new_load_event             => 12,  # (deprecated)
+    :rand_event                 => 13,  #
+    :user_var_event             => 14,  #
+    :format_description_event   => 15,  #
+    :xid_event                  => 16,  #
+    :begin_load_query_event     => 17,  #
+    :execute_load_query_event   => 18,  #
+    :table_map_event            => 19,  #
+    :pre_ga_write_rows_event    => 20,  # (deprecated)
+    :pre_ga_update_rows_event   => 21,  # (deprecated)
+    :pre_ga_delete_rows_event   => 22,  # (deprecated)
+    :write_rows_event           => 23,  #
+    :update_rows_event          => 24,  #
+    :delete_rows_event          => 25,  #
+    :incident_event             => 26,  #
+    :heartbeat_log_event        => 27,  #
+    :table_metadata_event       => 50,  # Only in Twitter MySQL
+  }
+
+  # A lookup array to map an integer event type ID to its symbol.
+  EVENT_TYPES = EVENT_TYPES_HASH.inject(Array.new(256)) do |type_array, item|
+   type_array[item[1]] = item[0]
+   type_array
+  end
 
   # A list of supported row-based replication event types. Since these all
   # have an identical structure, this list can be used by other programs to
@@ -103,6 +110,35 @@ module MysqlBinlog
   # Enumerated in sql/log_event.h line ~3413 within Table_map_log_event
   TABLE_MAP_EVENT_FLAGS = {
     :bit_len_exact          => 1 << 0,  # TM_BIT_LEN_EXACT_F
+  }
+
+  # A mapping array for all values that may appear in the +flags+ field of a
+  # table_metadata_event.
+  #
+  # There are none of these at the moment.
+  TABLE_METADATA_EVENT_FLAGS = {
+  }
+
+  # A mapping hash for all values that may appear in the +flags+ field of
+  # a column descriptor for a table_metadata_event.
+  #
+  # Defined in include/mysql_com.h line ~92
+  TABLE_METADATA_EVENT_COLUMN_FLAGS = {
+    :not_null             =>     1, # NOT_NULL_FLAG
+    :primary_key          =>     2, # PRI_KEY_FLAG
+    :unique_key           =>     4, # UNIQUE_KEY_FLAG
+    :multiple_key         =>     8, # MULTIPLE_KEY_FLAG
+    :blob                 =>    16, # BLOB_FLAG
+    :unsigned             =>    32, # UNSIGNED_FLAG
+    :zerofill             =>    64, # ZEROFILL_FLAG
+    :binary               =>   128, # BINARY_FLAG
+    :enum                 =>   256, # ENUM_FLAG
+    :auto_increment       =>   512, # AUTO_INCREMENT_FLAG
+    :timestamp            =>  1024, # TIMESTAMP_FLAG
+    :set                  =>  2048, # SET_FLAG
+    :no_default_value     =>  4096, # NO_DEFAULT_VALUE_FLAG
+    :on_update_now        =>  8192, # ON_UPDATE_NOW_FLAG
+    :part_key             => 16384, # PART_KEY_FLAG
   }
 
   # A mapping array for all values that may appear in the +flags+ field of a
@@ -362,6 +398,36 @@ module MysqlBinlog
       fields
     end
 
+    # Parse fields for a +Table_metadata+ event, which is specific to
+    # Twitter MySQL releases at the moment.
+    #
+    # Implemented in sql/log_event.cc line ~8772 (in Twitter MySQL)
+    # in Table_metadata_log_event::write_data_header
+    # and Table_metadata_log_event::write_data_body
+    def table_metadata_event(header)
+      fields = {}
+      table_id = parser.read_uint48
+      columns = parser.read_uint16
+
+      fields[:table] = @table_map[table_id]
+      fields[:flags] = parser.read_uint16
+      fields[:columns] = columns.times.map do |c|
+        descriptor_length = parser.read_uint32
+        @table_map[table_id][:columns][c][:description] = {
+          :type => MYSQL_TYPES[parser.read_uint8],
+          :length => parser.read_uint32,
+          :scale => parser.read_uint8,
+          :character_set => COLLATION[parser.read_uint16],
+          :flags => parser.read_uint_bitmap_by_size_and_name(2,
+                    TABLE_METADATA_EVENT_COLUMN_FLAGS),
+          :name => parser.read_varstring,
+          :type_name => parser.read_varstring,
+          :comment => parser.read_varstring,
+        }
+      end
+      fields
+    end
+
     # Parse a single row image, which is comprised of a series of columns. Not
     # all columns are present in the row image, the columns_used array of true
     # and false values identifies which columns are present.
@@ -372,10 +438,11 @@ module MysqlBinlog
         if !columns_used[column_index]
           row_image << nil
         elsif columns_null[column_index]
-          row_image << { column => nil }
+          row_image << { column_index => nil }
         else
           row_image << {
-            column => parser.read_mysql_type(column[:type], column[:metadata])
+            column_index =>
+              parser.read_mysql_type(column[:type], column[:metadata])
           }
         end
       end
