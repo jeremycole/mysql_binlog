@@ -200,14 +200,30 @@ module MysqlBinlog
 
     # Read a uint value using the provided size, and convert it to an array
     # of symbols derived from a mapping table provided.
-    def read_uint_bitmap_by_size_and_name(size, names)
+    def read_uint_bitmap_by_size_and_name(size, bit_names)
       value = read_uint_by_size(size)
-      names.inject([]) do |result, (name, bit_value)|
+      named_bits = []
+
+      # Do an efficient scan for the named bits we know about using the hash
+      # provided.
+      bit_names.each do |(name, bit_value)|
         if (value & bit_value) != 0
-          result << name
+          value -= bit_value
+          named_bits << name
         end
-        result
       end
+
+      # If anything is left over in +value+, add "unknown" names to the result
+      # so that they can be identified and corrected.
+      if value > 0
+        0.upto(size * 8).map { |n| 1 << n }.each do |bit_value|
+          if (value & bit_value) != 0
+            named_bits << "unknown_#{bit_value}".to_sym
+          end
+        end
+      end
+
+      named_bits
     end
 
     # Extract a number of sequential bits at a given offset within an integer.
