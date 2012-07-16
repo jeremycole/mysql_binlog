@@ -194,7 +194,7 @@ module MysqlBinlog
     # events that need bitmaps, as well as for the BIT type.
     def read_bit_array(length)
       data = reader.read((length+7)/8)
-      data.unpack("B*").first.reverse.  # Unpack into a string of "10101"
+      data.unpack("b*").first.  # Unpack into a string of "10101"
         split("").map { |c| c == "1" }.shift(length) # Return true/false array
     end
 
