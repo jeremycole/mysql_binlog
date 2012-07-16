@@ -58,7 +58,11 @@ module MysqlBinlog
     def seek(pos)
       @binlog.seek(pos)
     end
-  
+
+    def unget(char)
+      @binlog.ungetc(char)
+    end
+
     def end?
       return false if tail
       @binlog.eof?

@@ -341,12 +341,14 @@ module MysqlBinlog
         # which is fundamentally incompatible with :string parsing. Setting
         # a :type key in this hash will cause table_map_event to override the
         # main field :type with the provided type here.
-        real_type = MYSQL_TYPES[parser.read_uint8]
+        # See Field_string::do_save_field_metadata for reference.
+        metadata  = (parser.read_uint8 << 8) + parser.read_uint8
+        real_type = MYSQL_TYPES[metadata >> 8]
         case real_type
         when :enum, :set
-          { :type => real_type, :size => parser.read_uint8 }
+          { :type => real_type, :size => metadata & 0x00ff }
         else
-          { :max_length  => parser.read_uint8 }
+          { :max_length  => (((metadata >> 4) & 0x300) ^ 0x300) + (metadata & 0x00ff) }
         end
       end
     end
