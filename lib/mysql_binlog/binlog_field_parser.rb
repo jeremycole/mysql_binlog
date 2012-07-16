@@ -270,10 +270,11 @@ module MysqlBinlog
         read_float
       when :double
         read_double
-      when :string, :var_string
+      when :var_string
         read_varstring
-      when :varchar
-        read_lpstring(2)
+      when :varchar, :string
+        prefix_size = (metadata[:max_length] > 255) ? 2 : 1
+        read_lpstring(prefix_size)
       when :blob, :geometry
         read_lpstring(metadata[:length_size])
       when :timestamp
