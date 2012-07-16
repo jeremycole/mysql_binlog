@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'mysql_binlog'
+require 'bigdecimal'
 require 'getoptlong'
 require 'ostruct'
 require 'pp'

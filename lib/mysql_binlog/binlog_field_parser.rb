@@ -92,6 +92,31 @@ module MysqlBinlog
       reader.read(8).unpack("Q").first
     end
 
+    # Read a signed 8-bit (1-byte) integer.
+    def read_int8
+      reader.read(1).unpack("c").first
+    end
+
+    # Read a signed 16-bit (2-byte) big-endian integer.
+    def read_int16_be
+      reader.read(2).reverse.unpack('s').first
+    end
+
+    # Read a signed 24-bit (3-byte) big-endian integer.
+    def read_int24_be
+      a, b, c = reader.read(3).unpack('CCC')
+      if a & 128
+        (a << 16) | (b << 8) | c
+      else
+        (-1 << 24) | (a << 16) | (b << 8) | c
+      end
+    end
+
+    # Read a signed 32-bit (4-byte) big-endian integer.
+    def read_int32_be
+      reader.read(4).reverse.unpack('l').first
+    end
+
     def read_uint_by_size(size)
       case size
       when 1
@@ -110,6 +135,21 @@ module MysqlBinlog
         read_uint56
       when 8
         read_uint64
+      end
+    end
+
+    def read_int_be_by_size(size)
+      case size
+      when 1
+        read_int8
+      when 2
+        read_int16_be
+      when 3
+        read_int24_be
+      when 4
+        read_int32_be
+      else
+        raise "read_int#{size*8}_be not implemented"
       end
     end
 
@@ -182,6 +222,57 @@ module MysqlBinlog
     def read_varstring
       length = read_varint
       read_nstring(length)
+    end
+
+    # Read a (new) decimal value. The value is stored as a sequence of signed
+    # big-endian integers, each representing up to 9 digits of the integral
+    # and fractional parts. The first integer of the integral part and/or the
+    # last integer of the fractional part might be compressed (or packed) and
+    # are of variable length. The remaining integers (if any) are
+    # uncompressed and 32 bits wide.
+    def read_newdecimal(precision, scale)
+      digits_per_integer = 9
+      compressed_bytes = [0, 1, 1, 2, 2, 3, 3, 4, 4, 4]
+      integral = (precision - scale)
+      uncomp_integral = integral / digits_per_integer
+      uncomp_fractional = scale / digits_per_integer
+      comp_integral = integral - (uncomp_integral * digits_per_integer)
+      comp_fractional = scale - (uncomp_fractional * digits_per_integer)
+
+      # The sign is encoded in the high bit of the first byte/digit. The byte
+      # might be part of a larger integer, so apply the optional bit-flipper
+      # and push back the byte into the input stream.
+      value = read_uint8
+      str, mask = (value & 0x80 != 0) ? ["", 0] : ["-", -1]
+      reader.unget(value ^ 0x80)
+
+      size = compressed_bytes[comp_integral]
+
+      if size > 0
+        value = read_int_be_by_size(size) ^ mask
+        str << value.to_s
+      end
+
+      (1..uncomp_integral).each do
+        value = read_int32_be ^ mask
+        str << value.to_s
+      end
+
+      str << "."
+
+      (1..uncomp_fractional).each do
+        value = read_int32_be ^ mask
+        str << value.to_s
+      end
+
+      size = compressed_bytes[comp_fractional]
+
+      if size > 0
+        value = read_int_be_by_size(size) ^ mask
+        str << value.to_s
+      end
+
+      BigDecimal.new(str)
     end
 
     # Read an array of unsigned 8-bit (1-byte) integers.
@@ -292,7 +383,10 @@ module MysqlBinlog
       when :bit
         byte_length = (metadata[:bits]+7)/8
         read_uint_by_size(byte_length)
-      #when :newdecimal
+      when :newdecimal
+        precision = metadata[:precision]
+        scale = metadata[:decimals]
+        read_newdecimal(precision, scale)
       else
         raise UnsupportedTypeException.new("Type #{type} is not supported.")
       end
