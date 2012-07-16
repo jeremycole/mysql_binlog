@@ -177,6 +177,11 @@ All event types can be read, but may not be parsed, as not all event types are c
     <td>heartbeat_log_event</td>
     <td>Unsupported.</td>
   </tr>
+  <tr>
+    <td>50</td>
+    <td>table_metadata_event</td>
+    <td>Specific to Twitter MySQL 5.5.24.t7+. Fully supported with all fields parsed.</td>
+  </tr>
 </table>
 
 ## Data Types Supported in Row Events ##
@@ -228,7 +233,7 @@ All event types can be read, but may not be parsed, as not all event types are c
   <tr>
     <td>DECIMAL</td>
     <td>MYSQL_TYPE_NEWDECIMAL</td>
-    <td>Unsupported.</td>
+    <td>Fully supported using BigDecimal.</td>
   </tr>
   <tr>
     <th colspan=3>Temporal Types</th>
@@ -287,7 +292,7 @@ All event types can be read, but may not be parsed, as not all event types are c
   <tr>
     <td>BIT</td>
     <td>MYSQL_TYPE_BIT</td>
-    <td>Supported, values returned as an array of true/false values.</td>
+    <td>Supported, treated as integer of appropriate size.</td>
   </tr>
   <tr>
     <td>GEOMETRY</td>
