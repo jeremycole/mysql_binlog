@@ -1,3 +1,4 @@
+require 'mysql_binlog/version'
 require 'mysql_binlog/mysql_character_set'
 require 'mysql_binlog/binlog'
 require 'mysql_binlog/binlog_field_parser'

@@ -1,6 +1,10 @@
+lib = File.expand_path('../lib/', __FILE__)
+$:.unshift lib unless $:.include?(lib)
+require "mysql_binlog/version"
+
 Gem::Specification.new do |s|
   s.name        = 'mysql_binlog'
-  s.version     = File.open("VERSION").readline.chomp
+  s.version     = MysqlBinlog::VERSION
   s.date        = Time.now.strftime("%Y-%m-%d")
   s.summary     = 'MySQL Binary Log Parser'
   s.description = 'Library for parsing MySQL binary logs in Ruby'
@@ -16,6 +20,7 @@ Gem::Specification.new do |s|
     'lib/mysql_binlog/reader/binlog_file_reader.rb',
     'lib/mysql_binlog/reader/binlog_stream_reader.rb',
     'lib/mysql_binlog/reader/debugging_reader.rb',
+    'lib/mysql_binlog/version.rb',
   ]
   s.executables = [
     'mysql_binlog_dump',
