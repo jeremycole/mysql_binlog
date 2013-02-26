@@ -1,0 +1,135 @@
+#!/usr/bin/env ruby
+
+require 'mysql_binlog'
+require 'getoptlong'
+require 'ostruct'
+require 'pp'
+
+include MysqlBinlog
+
+def usage(exit_code, message = nil)
+  print "Error: #{message}\n\n" unless message.nil?
+
+  print <<'END_OF_USAGE'
+
+Usage:
+  To read from a binary log file on disk:
+    mysql_binlog_summary [options] -f <filename>
+
+  --help, -?
+    Show this help.
+
+  --file, -f <filename>
+    Read from a binary log file on disk.
+
+  --tail, -t
+    When reading from a file, follow the end of the binary log file instead
+    of exiting when reaching the end. Exit with Control-C.
+
+  --rotate, -r
+    When reading from a file, follow the rotate events which may be at the
+    end of a file (due to log rotation) so that the stream can be followed
+    through multiple files. This is especially useful with --tail.
+
+END_OF_USAGE
+
+  exit exit_code
+end
+
+
+@options = OpenStruct.new
+@options.file = nil
+@options.debug = false
+@options.tail = false
+@options.rotate = false
+
+getopt_options = [
+  [ "--help",             "-?",     GetoptLong::NO_ARGUMENT ],
+  [ "--file",             "-f",     GetoptLong::REQUIRED_ARGUMENT ],
+  [ "--tail",             "-t",     GetoptLong::NO_ARGUMENT ],
+  [ "--rotate",           "-r",     GetoptLong::NO_ARGUMENT ],
+]
+
+getopt = GetoptLong.new(*getopt_options)
+
+getopt.each do |opt, arg|
+  case opt
+  when "--help"
+    usage 0
+  when "--file"
+    @options.file = arg
+  when "--tail"
+    @options.tail = true
+  when "--rotate"
+    @options.rotate = true
+  end
+end
+
+unless @options.file
+  usage 1, "A file must be provided with --file/-f"
+end
+
+reader = BinlogFileReader.new(@options.file)
+binlog = Binlog.new(reader)
+
+if @options.tail
+  reader.tail = true
+else
+  reader.tail = false
+end
+
+if @options.rotate
+  binlog.ignore_rotate = false
+else
+  binlog.ignore_rotate = true
+end
+
+#binlog.filter_event_types = [:query_event]
+#binlog.filter_flags = [0]
+query_pattern = /^(INSERT|UPDATE|DELETE)\s+(?:(?:INTO|FROM)\s+)?[`]?(\S+?)[`]?\s+/i
+
+min_timestamp = nil
+max_timestamp = nil
+
+events_processed = 0
+event_types = {}
+binlog.each_event do |event|
+  verb  = nil
+  table = nil
+  if (events_processed % 1000) == 0
+    puts "Processed #{events_processed} events (#{event[:position]/(1024**2)} MB)"
+  end
+
+  if event[:type] == :query_event
+    if match_query = event[:event][:query].match(query_pattern)
+      verb  = match_query[1].downcase
+      table = match_query[2] 
+    end
+  end
+
+  if ROW_EVENT_TYPES.include? event[:type]
+    verb  = event[:type].to_s
+    table = event[:event][:table][:table]
+  end
+  
+  if verb
+    min_timestamp ||= event[:header][:timestamp]
+    max_timestamp ||= event[:header][:timestamp]
+    
+    min_timestamp = [min_timestamp, event[:header][:timestamp]].min
+    max_timestamp = [max_timestamp, event[:header][:timestamp]].max
+
+    event_types[verb] ||= Hash.new(0)
+    event_types[verb][table] += 1
+  end
+
+  events_processed += 1
+end
+
+duration = max_timestamp - min_timestamp
+event_types.sort.each do |verb, table_count|
+  puts "%s\n" % [verb]
+  table_count.sort { |a, b| b[1] <=> a[1] }.each do |table, count|
+    puts "  %-32s%10d%10.2f/s" % [table, count, count.to_f/duration.to_f]
+  end
+end
