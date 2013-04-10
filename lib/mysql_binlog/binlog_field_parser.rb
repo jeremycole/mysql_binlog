@@ -105,7 +105,7 @@ module MysqlBinlog
     # Read a signed 24-bit (3-byte) big-endian integer.
     def read_int24_be
       a, b, c = reader.read(3).unpack('CCC')
-      if a & 128
+      if (a & 128) == 0
         (a << 16) | (b << 8) | c
       else
         (-1 << 24) | (a << 16) | (b << 8) | c
