@@ -119,6 +119,12 @@ module MysqlBinlog
           return nil
         end
 
+        # Skip the remaining part of the header which might not have been
+        # parsed.
+        if @fde
+          reader.seek(position + @fde[:header_length])
+        end
+
         if @filter_event_types
           unless @filter_event_types.include? header[:event_type]
             skip_this_event = true
