@@ -81,7 +81,7 @@ module MysqlBinlog
     def read_event_fields(header)
       # Delegate the parsing of the event content to a method of the same name
       # in BinlogEventParser.
-      if event_parser.methods.include? header[:event_type].to_s
+      if event_parser.methods.map(&:to_sym).include? header[:event_type]
         fields = event_parser.send(header[:event_type], header)
       end
 
