@@ -20,7 +20,7 @@ module MysqlBinlog
     def open_file(filename)
       @dirname  = File.dirname(filename)
       @filename = File.basename(filename)
-      @binlog   = File.open(filename, mode="r")
+      @binlog   = File.open(filename, "r:BINARY")
 
       verify_magic
     end
