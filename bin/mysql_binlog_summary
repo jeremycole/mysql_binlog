@@ -38,16 +38,16 @@ end
 
 
 @options = OpenStruct.new
-@options.file = nil
 @options.debug = false
 @options.tail = false
 @options.rotate = false
+@options.checksum = nil
 
 getopt_options = [
   [ "--help",             "-?",     GetoptLong::NO_ARGUMENT ],
-  [ "--file",             "-f",     GetoptLong::REQUIRED_ARGUMENT ],
   [ "--tail",             "-t",     GetoptLong::NO_ARGUMENT ],
   [ "--rotate",           "-r",     GetoptLong::NO_ARGUMENT ],
+  [ "--checksum",         "-c",     GetoptLong::NO_ARGUMENT ],
 ]
 
 getopt = GetoptLong.new(*getopt_options)
@@ -56,80 +56,135 @@ getopt.each do |opt, arg|
   case opt
   when "--help"
     usage 0
-  when "--file"
-    @options.file = arg
   when "--tail"
     @options.tail = true
   when "--rotate"
     @options.rotate = true
+  when "--checksum"
+    @options.checksum = :crc32
   end
 end
 
-unless @options.file
-  usage 1, "A file must be provided with --file/-f"
+if ARGV.empty?
+  usage 1, "A file must be provided"
 end
 
-reader = BinlogFileReader.new(@options.file)
-binlog = Binlog.new(reader)
-
-if @options.tail
-  reader.tail = true
-else
-  reader.tail = false
-end
-
-if @options.rotate
-  binlog.ignore_rotate = false
-else
-  binlog.ignore_rotate = true
-end
-
-#binlog.filter_event_types = [:query_event]
-#binlog.filter_flags = [0]
-query_pattern = /^(INSERT|UPDATE|DELETE)\s+(?:(?:INTO|FROM)\s+)?[`]?(\S+?)[`]?\s+/i
-
+files = {}
 min_timestamp = nil
 max_timestamp = nil
-
+events = []
 events_processed = 0
-event_types = {}
-binlog.each_event do |event|
-  verb  = nil
-  table = nil
-  if (events_processed % 1000) == 0
-    puts "Processed #{events_processed} events (#{event[:position]/(1024**2)} MB)"
-  end
 
-  if event[:type] == :query_event
-    if match_query = event[:event][:query].match(query_pattern)
-      verb  = match_query[1].downcase
-      table = match_query[2] 
+ARGV.each do |filename|
+  reader = BinlogFileReader.new(filename)
+  binlog = Binlog.new(reader)
+  reader.tail = @options.tail
+  binlog.ignore_rotate = !@options.rotate
+  binlog.checksum = @options.checksum
+
+  file_min_timestamp = nil
+  file_max_timestamp = nil
+  file_events_processed = 0
+
+  #binlog.filter_event_types = [:query_event]
+  #binlog.filter_flags = [0]
+  query_pattern = /^(INSERT|UPDATE|DELETE)\s+(?:(?:INTO|FROM)\s+)?[`]?(\S+?)[`]?\s+/i
+
+  binlog.each_event do |event|
+    verb  = nil
+    table = nil
+
+    if event[:type] == :query_event
+      if match_query = event[:event][:query].match(query_pattern)
+        verb  = match_query[1].downcase
+        table = match_query[2]
+      end
+    end
+
+    if ROW_EVENT_TYPES.include? event[:type]
+      verb  = event[:type].to_s.sub(/_event_v[12]/, '')
+      table = event[:event][:table][:table]
+    end
+    
+    timestamp = event[:header][:timestamp]
+
+    file_min_timestamp = [file_min_timestamp || timestamp, timestamp].min
+    file_max_timestamp = [file_max_timestamp || timestamp, timestamp].max
+
+    events << {
+      timestamp: timestamp,
+      type: event[:type],
+      verb: verb,
+      table: table,
+    }
+
+    file_events_processed += 1
+    events_processed += 1
+
+    if (file_events_processed % 1000) == 0
+      puts "%-32s %6d MiB %10d %10d" % [
+        filename, event[:position]/(1024**2), file_events_processed, events_processed
+      ]
     end
   end
 
-  if ROW_EVENT_TYPES.include? event[:type]
-    verb  = event[:type].to_s
-    table = event[:event][:table][:table]
-  end
-  
-  if verb
-    min_timestamp ||= event[:header][:timestamp]
-    max_timestamp ||= event[:header][:timestamp]
-    
-    min_timestamp = [min_timestamp, event[:header][:timestamp]].min
-    max_timestamp = [max_timestamp, event[:header][:timestamp]].max
+  files[filename] = {
+    filename: filename,
+    events: file_events_processed,
+    min_timestamp: file_min_timestamp,
+    max_timestamp: file_max_timestamp,
+  }
 
-    event_types[verb] ||= Hash.new(0)
-    event_types[verb][table] += 1
-  end
-
-  events_processed += 1
+  min_timestamp = [min_timestamp || file_min_timestamp, file_min_timestamp].min
+  max_timestamp = [max_timestamp || file_max_timestamp, file_max_timestamp].max
 end
+puts "Done."
+puts
 
 duration = max_timestamp - min_timestamp
-event_types.sort.each do |verb, table_count|
-  puts "%s\n" % [verb]
-  table_count.sort { |a, b| b[1] <=> a[1] }.each do |table, count|
-    puts "  %-32s%10d%10.2f/s" % [table, count, count.to_f/duration.to_f]
+
+puts "File summary:"
+files.each do |filename, file|
+  puts "  %-32s%10s%26s%26s" % [
+    File.basename(filename),
+    file[:events],
+    Time.at(file[:min_timestamp]).utc,
+    Time.at(file[:max_timestamp]).utc,
+  ]
+end
+puts
+
+puts "Summary:"
+puts "  Files:        %d" % [files.size]
+puts "  Events:       %d" % [events_processed]
+puts "  Min Time:     %s" % [Time.at(min_timestamp).utc]
+puts "  Max Time:     %s" % [Time.at(max_timestamp).utc]
+puts "  Duration:     %ds" % [duration]
+puts "  Event Rate:   %0.2f/s" % [events_processed.to_f / duration.to_f]
+puts
+
+events_by_type = Hash.new(0)
+events_by_verb_and_table = {}
+events.each do |event|
+  events_by_type[event[:type]] += 1
+  if event[:verb]
+    events_by_verb_and_table[event[:verb]] ||= Hash.new(0)
+    events_by_verb_and_table[event[:verb]][event[:table]] += 1
   end
 end
+
+puts "Events by type:"
+events_by_type.sort { |a, b| b[1] <=> a[1] }.each do |type, count|
+  puts "  %-50s%10d%10.2f/s" % [type, count, count.to_f / duration.to_f]
+end
+puts
+
+puts "Events by verb and table:"
+events_by_verb_and_table.sort.each do |verb, table_and_count|
+  puts "%s\n" % [verb]
+  table_and_count.sort { |a, b| b[1] <=> a[1] }.each do |table, count|
+    puts "  %-50s%10d%10.2f/s" % [table, count, count.to_f / duration.to_f]
+  end
+  puts
+end
+puts

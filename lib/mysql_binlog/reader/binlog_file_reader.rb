@@ -69,7 +69,7 @@ module MysqlBinlog
     end
 
     def remaining(header)
-      header[:next_position] - @binlog.tell
+      header[:payload_end] - @binlog.tell
     end
 
     def skip(header)

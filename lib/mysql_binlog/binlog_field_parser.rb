@@ -1,3 +1,5 @@
+require 'bigdecimal'
+
 module MysqlBinlog
   # All MySQL types mapping to their integer values.
   MYSQL_TYPES_HASH = {
@@ -18,6 +20,10 @@ module MysqlBinlog
     :newdate         => 14,
     :varchar         => 15,
     :bit             => 16,
+    :timestamp2      => 17,
+    :datetime2       => 18,
+    :time2           => 19,
+    :json            => 245,
     :newdecimal      => 246,
     :enum            => 247,
     :set             => 248,
@@ -64,6 +70,17 @@ module MysqlBinlog
       a + (b << 8) + (c << 16)
     end
 
+    # Read an unsigned 24-bit (3-byte) big-endian integer.
+    def read_uint24_be
+      a, b = reader.read(3).unpack("nC")
+      (a << 8) + b
+    end
+
+    # Read an unsigned 32-bit (4-byte) integer.
+    def read_uint32_be
+      reader.read(4).unpack("N").first
+    end
+
     # Read an unsigned 32-bit (4-byte) integer.
     def read_uint32
       reader.read(4).unpack("V").first
@@ -73,6 +90,12 @@ module MysqlBinlog
     def read_uint40
       a, b = reader.read(5).unpack("CV")
       a + (b << 8)
+    end
+
+    # Read an unsigned 40-bit (5-byte) big-endian integer.
+    def read_uint40_be
+      a, b = reader.read(5).unpack("NC")
+      (a << 8) + b
     end
 
     # Read an unsigned 48-bit (6-byte) integer.
@@ -89,7 +112,12 @@ module MysqlBinlog
 
     # Read an unsigned 64-bit (8-byte) integer.
     def read_uint64
-      reader.read(8).unpack("Q").first
+      reader.read(8).unpack("Q<").first
+    end
+
+    # Read an unsigned 64-bit (8-byte) integer.
+    def read_uint64_be
+      reader.read(8).unpack("Q>").first
     end
 
     # Read a signed 8-bit (1-byte) integer.
@@ -99,7 +127,7 @@ module MysqlBinlog
 
     # Read a signed 16-bit (2-byte) big-endian integer.
     def read_int16_be
-      reader.read(2).reverse.unpack('s').first
+      reader.read(2).unpack('n').first
     end
 
     # Read a signed 24-bit (3-byte) big-endian integer.
@@ -114,9 +142,9 @@ module MysqlBinlog
 
     # Read a signed 32-bit (4-byte) big-endian integer.
     def read_int32_be
-      reader.read(4).reverse.unpack('l').first
+      reader.read(4).unpack('N').first
     end
-
+    
     def read_uint_by_size(size)
       case size
       when 1
@@ -272,7 +300,7 @@ module MysqlBinlog
         str << value.to_s
       end
 
-      BigDecimal.new(str)
+      BigDecimal(str)
     end
 
     # Read an array of unsigned 8-bit (1-byte) integers.
@@ -359,6 +387,41 @@ module MysqlBinlog
       ]
     end
 
+    def convert_mysql_type_datetimef(int_part, frac_part)
+      year_month = extract_bits(int_part, 17, 22)
+      year = year_month / 13
+      month = year_month % 13
+      day = extract_bits(int_part, 5, 17)
+      hour = extract_bits(int_part, 5, 12)
+      minute = extract_bits(int_part, 6, 6)
+      second = extract_bits(int_part, 6, 0)
+
+      "%04i-%02i-%02i %02i:%02i:%02i.%06i" % [
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        frac_part,
+      ]
+    end
+
+    def read_datetimef(decimals)
+      int_part = read_uint40_be
+      frac_part = case decimals
+      when 0
+        0
+      when 1, 2
+        read_uint8 * 10000
+      when 3, 4
+        read_uint16_be * 100
+      when 5, 6
+        read_uint24_be
+      end
+      convert_mysql_type_datetimef(int_part, frac_part)
+    end
+
     # Read a single field, provided the MySQL column type as a symbol. Not all
     # types are currently supported.
     def read_mysql_type(type, metadata=nil)
@@ -382,7 +445,7 @@ module MysqlBinlog
       when :varchar, :string
         prefix_size = (metadata[:max_length] > 255) ? 2 : 1
         read_lpstring(prefix_size)
-      when :blob, :geometry
+      when :blob, :geometry, :json
         read_lpstring(metadata[:length_size])
       when :timestamp
         read_uint32
@@ -394,6 +457,8 @@ module MysqlBinlog
         convert_mysql_type_time(read_uint24)
       when :datetime
         convert_mysql_type_datetime(read_uint64)
+      when :datetime2
+        read_datetimef(metadata[:decimals])
       when :enum, :set
         read_uint_by_size(metadata[:size])
       when :bit

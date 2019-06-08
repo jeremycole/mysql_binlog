@@ -51,6 +51,7 @@ module MysqlBinlog
     attr_accessor :filter_flags
     attr_accessor :ignore_rotate
     attr_accessor :max_query_length
+    attr_accessor :checksum
 
     def initialize(reader)
       @reader = reader
@@ -61,6 +62,7 @@ module MysqlBinlog
       @filter_flags = nil
       @ignore_rotate = false
       @max_query_length = 1048576
+      @checksum = :nil
     end
 
     # Rewind to the beginning of the log, if supported by the reader. The
@@ -85,6 +87,12 @@ module MysqlBinlog
         fields = event_parser.send(header[:event_type], header)
       end
 
+      unless fields
+        fields = {
+          payload: reader.read(header[:payload_length]),
+        }
+      end
+
       # Check if we've read past the end of the event. This is normally because
       # of an unsupported substructure in the event causing field misalignment
       # or a bug in the event reader method in BinlogEventParser. This may also
@@ -102,6 +110,19 @@ module MysqlBinlog
       fields
     end
     private :read_event_fields
+
+    def checksum_length
+      case @checksum
+      when :crc32
+        4
+      else
+        0
+      end
+    end
+
+    def payload_length(header)
+      @fde ? (header[:event_length] - @fde[:header_length] - checksum_length) : 0
+    end
 
     # Scan events until finding one that isn't rejected by the filter rules.
     # If there are no filter rules, this will return the next event provided
@@ -123,7 +144,13 @@ module MysqlBinlog
         # parsed.
         if @fde
           reader.seek(position + @fde[:header_length])
+          header[:payload_length] = payload_length(header)
+          header[:payload_end] = position + @fde[:header_length] + payload_length(header)
+        else
+          header[:payload_length] = 0
+          header[:payload_end] = header[:next_position]
         end
+
 
         if @filter_event_types
           unless @filter_event_types.include? header[:event_type]

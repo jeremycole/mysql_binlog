@@ -26,11 +26,23 @@ module MysqlBinlog
     :pre_ga_write_rows_event    => 20,  # (deprecated)
     :pre_ga_update_rows_event   => 21,  # (deprecated)
     :pre_ga_delete_rows_event   => 22,  # (deprecated)
-    :write_rows_event           => 23,  #
-    :update_rows_event          => 24,  #
-    :delete_rows_event          => 25,  #
+    :write_rows_event_v1        => 23,  #
+    :update_rows_event_v1       => 24,  #
+    :delete_rows_event_v1       => 25,  #
     :incident_event             => 26,  #
     :heartbeat_log_event        => 27,  #
+    :ignorable_log_event        => 28,
+    :rows_query_log_event       => 29,
+    :write_rows_event_v2        => 30,
+    :update_rows_event_v2       => 31,
+    :delete_rows_event_v2       => 32,
+    :gtid_log_event             => 33,
+    :anonymous_gtid_log_event   => 34,
+    :previous_gtids_log_event   => 35,
+    :transaction_context_event  => 36,
+    :view_change_event          => 37,
+    :xa_prepare_log_event       => 38,
+
     :table_metadata_event       => 50,  # Only in Twitter MySQL
   }
 
@@ -44,9 +56,9 @@ module MysqlBinlog
   # have an identical structure, this list can be used by other programs to
   # know which events can be treated as row events.
   ROW_EVENT_TYPES = [
-    :write_rows_event,
-    :update_rows_event,
-    :delete_rows_event,
+    :write_rows_event_v1,
+    :update_rows_event_v1,
+    :delete_rows_event_v1,
   ]
 
   # Values for the +flags+ field that may appear in binary logs. There are
@@ -55,11 +67,14 @@ module MysqlBinlog
   #
   # Defined in sql/log_event.h line ~448
   EVENT_HEADER_FLAGS = {
-    :binlog_in_use   => 0x01, # LOG_EVENT_BINLOG_IN_USE_F
-    :thread_specific => 0x04, # LOG_EVENT_THREAD_SPECIFIC_F
-    :suppress_use    => 0x08, # LOG_EVENT_SUPPRESS_USE_F
-    :artificial      => 0x20, # LOG_EVENT_ARTIFICIAL_F
-    :relay_log       => 0x40, # LOG_EVENT_RELAY_LOG_F
+    :binlog_in_use    => 0x0001, # LOG_EVENT_BINLOG_IN_USE_F
+    :thread_specific  => 0x0004, # LOG_EVENT_THREAD_SPECIFIC_F
+    :suppress_use     => 0x0008, # LOG_EVENT_SUPPRESS_USE_F
+    :artificial       => 0x0020, # LOG_EVENT_ARTIFICIAL_F
+    :relay_log        => 0x0040, # LOG_EVENT_RELAY_LOG_F
+    :ignorable        => 0x0080, # LOG_EVENT_IGNORABLE_F
+    :no_filter        => 0x0100, # LOG_EVENT_NO_FILTER_F
+    :mts_isolate      => 0x0200, # LOG_EVENT_MTS_ISOLATE_F
   }
 
   # A mapping array for all values that may appear in the +status+ field of
@@ -79,7 +94,14 @@ module MysqlBinlog
     :table_map_for_update,      #  9 (Q_TABLE_MAP_FOR_UPDATE_CODE)
     :master_data_written,       # 10 (Q_MASTER_DATA_WRITTEN_CODE)
     :invoker,                   # 11 (Q_INVOKER)
+    :updated_db_names,          # 12 (Q_UPDATED_DB_NAMES)
+    :microseconds,              # 13 (Q_MICROSECONDS)
+    :commit_ts,                 # 14 (Q_COMMIT_TS)
+    :commit_ts2,                # 15
+    :explicit_defaults_for_timestamp, # 16
   ]
+
+  QUERY_EVENT_OVER_MAX_DBS_IN_EVENT_MTS = 254
 
   # A mapping hash for all values that may appear in the +flags2+ field of
   # a query_event.
@@ -181,11 +203,13 @@ module MysqlBinlog
     def event_header
       header = {}
       header[:timestamp]      = parser.read_uint32
-      header[:event_type]     = EVENT_TYPES[parser.read_uint8]
+      event_type = parser.read_uint8
+      header[:event_type]     = EVENT_TYPES[event_type] || "unknown_#{event_type}".to_sym
       header[:server_id]      = parser.read_uint32
       header[:event_length]   = parser.read_uint32
       header[:next_position]  = parser.read_uint32
       header[:flags] = parser.read_uint_bitmap_by_size_and_name(2, EVENT_HEADER_FLAGS)
+
       header
     end
 
@@ -212,6 +236,25 @@ module MysqlBinlog
       fields
     end
 
+    def _query_event_status_updated_db_names
+      db_count = parser.read_uint8
+      return nil if db_count == QUERY_EVENT_OVER_MAX_DBS_IN_EVENT_MTS
+
+      db_names = []
+      db_count.times do |n|
+        db_name = ""
+        loop do
+          c = reader.read(1)
+          break if c == "\0"
+          db_name << c
+        end
+        db_names << db_name
+      end
+
+      db_names
+    end
+    private :_query_event_status_updated_db_names
+
     # Parse a dynamic +status+ structure within a query_event, which consists
     # of a status_length (uint16) followed by a number of status variables
     # (determined by the +status_length+) each of which consist of:
@@ -223,7 +266,8 @@ module MysqlBinlog
       status_length = parser.read_uint16
       end_position = reader.position + status_length
       while reader.position < end_position
-        status_type = QUERY_EVENT_STATUS_TYPES[parser.read_uint8]
+        status_type_id = parser.read_uint8
+        status_type = QUERY_EVENT_STATUS_TYPES[status_type_id]
         status[status_type] = case status_type
         when :flags2
           parser.read_uint_bitmap_by_size_and_name(4, QUERY_EVENT_FLAGS2)
@@ -252,6 +296,12 @@ module MysqlBinlog
           parser.read_uint16
         when :table_map_for_update
           parser.read_uint64
+        when :updated_db_names
+          _query_event_status_updated_db_names
+        when :commit_ts
+          parser.read_uint64
+        else
+          raise "Unknown status type #{status_type_id}"
         end
       end
 
@@ -334,7 +384,7 @@ module MysqlBinlog
           :precision => parser.read_uint8,
           :decimals  => parser.read_uint8,
         }
-      when :blob, :geometry
+      when :blob, :geometry, :json
         { :length_size => parser.read_uint8 }
       when :string, :var_string
         # The :string type sets a :real_type field to indicate the actual type
@@ -350,6 +400,10 @@ module MysqlBinlog
         else
           { :max_length  => (((metadata >> 4) & 0x300) ^ 0x300) + (metadata & 0x00ff) }
         end
+      when :timestamp2, :datetime2, :time2
+        {
+          :decimals => parser.read_uint8,
+        }
       end
     end
     private :_table_map_event_column_metadata_read
@@ -376,7 +430,7 @@ module MysqlBinlog
       map_entry[:db] = parser.read_lpstringz
       map_entry[:table] = parser.read_lpstringz
       columns = parser.read_varint
-      columns_type = parser.read_uint8_array(columns).map { |c| MYSQL_TYPES[c] }
+      columns_type = parser.read_uint8_array(columns).map { |c| MYSQL_TYPES[c] || "unknown_#{c}".to_sym }
       columns_metadata = _table_map_event_column_metadata(columns_type)
       columns_nullable = parser.read_bit_array(columns)
 
@@ -415,8 +469,9 @@ module MysqlBinlog
       fields[:flags] = parser.read_uint16
       fields[:columns] = columns.times.map do |c|
         descriptor_length = parser.read_uint32
+        column_type = parser.read_uint8
         @table_map[table_id][:columns][c][:description] = {
-          :type => MYSQL_TYPES[parser.read_uint8],
+          :type => MYSQL_TYPES[column_type] || "unknown_#{column_type}".to_sym,
           :length => parser.read_uint32,
           :scale => parser.read_uint8,
           :character_set => COLLATION[parser.read_uint16],
@@ -433,41 +488,56 @@ module MysqlBinlog
     # Parse a single row image, which is comprised of a series of columns. Not
     # all columns are present in the row image, the columns_used array of true
     # and false values identifies which columns are present.
-    def _generic_rows_event_row_image(header, fields, columns_used)
+    def _generic_rows_event_row_image_v1(header, fields, columns_used)
       row_image = []
       columns_null = parser.read_bit_array(fields[:table][:columns].size)
       fields[:table][:columns].each_with_index do |column, column_index|
+        #puts "column #{column_index} #{column}: used=#{columns_used[column_index]}, null=#{columns_null[column_index]}"
         if !columns_used[column_index]
           row_image << nil
         elsif columns_null[column_index]
           row_image << { column_index => nil }
         else
+          value = parser.read_mysql_type(column[:type], column[:metadata])
           row_image << {
-            column_index =>
-              parser.read_mysql_type(column[:type], column[:metadata])
+            column_index => value,
           }
         end
       end
       row_image
     end
-    private :_generic_rows_event_row_image
+    private :_generic_rows_event_row_image_v1
+
+    def diff_row_images(before, after)
+      diff = {}
+      before.each_with_index do |before_column, index|
+        after_column = after[index]
+        before_value = before_column.first[1]
+        after_value = after_column.first[1]
+        if before_value != after_value
+          diff[index] = { before: before_value, after: after_value }
+        end
+      end
+      diff
+    end
 
     # Parse the row images present in a row-based replication row event. This
     # is rather incomplete right now due missing support for many MySQL types,
     # but can parse some basic events.
-    def _generic_rows_event_row_images(header, fields, columns_used)
+    def _generic_rows_event_row_images_v1(header, fields, columns_used)
       row_images = []
       end_position = reader.position + reader.remaining(header)
       while reader.position < end_position
         row_image = {}
         case header[:event_type]
-        when :write_rows_event
-          row_image[:after]  = _generic_rows_event_row_image(header, fields, columns_used[:after])
-        when :delete_rows_event
-          row_image[:before] = _generic_rows_event_row_image(header, fields, columns_used[:before])
-        when :update_rows_event
-          row_image[:before] = _generic_rows_event_row_image(header, fields, columns_used[:before])
-          row_image[:after]  = _generic_rows_event_row_image(header, fields, columns_used[:after])
+        when :write_rows_event_v1
+          row_image[:after]  = _generic_rows_event_row_image_v1(header, fields, columns_used[:after])
+        when :delete_rows_event_v1
+          row_image[:before] = _generic_rows_event_row_image_v1(header, fields, columns_used[:before])
+        when :update_rows_event_v1
+          row_image[:before] = _generic_rows_event_row_image_v1(header, fields, columns_used[:before])
+          row_image[:after]  = _generic_rows_event_row_image_v1(header, fields, columns_used[:after])
+          row_image[:diff] = diff_row_images(row_image[:before], row_image[:after])
         end
         row_images << row_image
       end
@@ -481,7 +551,7 @@ module MysqlBinlog
 
       row_images
     end
-    private :_generic_rows_event_row_images
+    private :_generic_rows_event_row_images_v1
 
     # Parse fields for any of the row-based replication row events:
     # * +Write_rows+ which is used for +INSERT+.
@@ -491,7 +561,7 @@ module MysqlBinlog
     # Implemented in sql/log_event.cc line ~8039
     # in Rows_log_event::write_data_header
     # and Rows_log_event::write_data_body
-    def generic_rows_event(header)
+    def generic_rows_event_v1(header)
       fields = {}
       table_id = parser.read_uint48
       fields[:table] = @table_map[table_id]
@@ -499,21 +569,31 @@ module MysqlBinlog
       columns = parser.read_varint
       columns_used = {}
       case header[:event_type]
-      when :write_rows_event
+      when :write_rows_event_v1
         columns_used[:after]  = parser.read_bit_array(columns)
-      when :delete_rows_event
+      when :delete_rows_event_v1
         columns_used[:before] = parser.read_bit_array(columns)
-      when :update_rows_event
+      when :update_rows_event_v1
         columns_used[:before] = parser.read_bit_array(columns)
         columns_used[:after]  = parser.read_bit_array(columns)
       end
-      fields[:row_image] = _generic_rows_event_row_images(header, fields, columns_used)
+      fields[:row_image] = _generic_rows_event_row_images_v1(header, fields, columns_used)
       fields
     end
 
-    alias :write_rows_event  :generic_rows_event
-    alias :update_rows_event :generic_rows_event
-    alias :delete_rows_event :generic_rows_event
+    alias :write_rows_event_v1  :generic_rows_event_v1
+    alias :update_rows_event_v1 :generic_rows_event_v1
+    alias :delete_rows_event_v1 :generic_rows_event_v1
 
+    def rows_query_log_event(header)
+      reader.read(1) # skip useless byte length which is unused
+      { query: reader.read(header[:payload_length]-1) }
+    end
+
+    def previous_gtids_log_event(header)
+    end
+
+    def gtid_log_event(header)
+    end
   end
 end
