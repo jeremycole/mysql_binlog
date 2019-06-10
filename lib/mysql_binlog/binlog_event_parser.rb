@@ -590,10 +590,39 @@ module MysqlBinlog
       { query: reader.read(header[:payload_length]-1) }
     end
 
+    def in_hex(bytes)
+      bytes.each_byte.map { |c| "%02x" % c.ord }.join
+    end
+
+    def format_gtid_sid(sid)
+      [0..3, 4..5, 6..7, 8..9, 10..15].map { |r| in_hex(sid[r]) }.join("-")
+    end
+
+    # 6d9190a2-cca6-11e8-aa8c-42010aef0019:551845019
+    def format_gtid(sid, gno)
+      "#{format_gtid_sid(sid)}:#{gno}"
+    end
+
     def previous_gtids_log_event(header)
     end
 
     def gtid_log_event(header)
+      flags = parser.read_uint8
+      sid = parser.read_nstring(16)
+      gno = parser.read_uint64
+      lts_type = parser.read_uint8
+      lts_last_committed = parser.read_uint64
+      lts_sequence_number = parser.read_uint64
+
+      {
+        flags: flags,
+        gtid: format_gtid(sid, gno),
+        lts: {
+          type: lts_type,
+          last_committed: lts_last_committed,
+          sequence_number: lts_sequence_number,
+        },
+      }
     end
   end
 end
