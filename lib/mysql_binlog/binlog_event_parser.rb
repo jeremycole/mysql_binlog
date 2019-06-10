@@ -599,11 +599,29 @@ module MysqlBinlog
     end
 
     # 6d9190a2-cca6-11e8-aa8c-42010aef0019:551845019
-    def format_gtid(sid, gno)
-      "#{format_gtid_sid(sid)}:#{gno}"
+    def format_gtid(sid, gno_or_ivs)
+      "#{format_gtid_sid(sid)}:#{gno_or_ivs}"
     end
 
     def previous_gtids_log_event(header)
+      n_sids = parser.read_uint64
+
+      gtids = []
+      n_sids.times do
+        sid = parser.read_nstring(16)
+        n_ivs = parser.read_uint64
+        ivs = []
+        n_ivs.times do
+          iv_start = parser.read_uint64
+          iv_end = parser.read_uint64
+          ivs << "#{iv_start}-#{iv_end}"
+        end
+        gtids << format_gtid(sid, ivs.join(":"))
+      end
+
+      {
+        previous_gtids: gtids
+      }
     end
 
     def gtid_log_event(header)
