@@ -14,13 +14,16 @@ def usage(exit_code, message = nil)
 
 Usage:
   To read from a binary log file on disk:
-    mysql_binlog_summary [options] -f <filename>
+    mysql_binlog_summary [options] <filename(s)>
 
   --help, -?
     Show this help.
 
   --file, -f <filename>
-    Read from a binary log file on disk.
+    Read from a binary log file on disk (deprecated).
+
+  --checksum, -c
+    Enable CRC32 checksums.
 
   --tail, -t
     When reading from a file, follow the end of the binary log file instead
@@ -36,15 +39,15 @@ END_OF_USAGE
   exit exit_code
 end
 
-
 @options = OpenStruct.new
-@options.debug = false
 @options.tail = false
 @options.rotate = false
 @options.checksum = nil
+@options.filenames = []
 
 getopt_options = [
   [ "--help",             "-?",     GetoptLong::NO_ARGUMENT ],
+  [ "--file",             "-f",     GetoptLong::REQUIRED_ARGUMENT ],
   [ "--tail",             "-t",     GetoptLong::NO_ARGUMENT ],
   [ "--rotate",           "-r",     GetoptLong::NO_ARGUMENT ],
   [ "--checksum",         "-c",     GetoptLong::NO_ARGUMENT ],
@@ -56,6 +59,8 @@ getopt.each do |opt, arg|
   case opt
   when "--help"
     usage 0
+  when "--file"
+    @options.filenames << arg
   when "--tail"
     @options.tail = true
   when "--rotate"
@@ -65,7 +70,9 @@ getopt.each do |opt, arg|
   end
 end
 
-if ARGV.empty?
+@options.filenames.concat(ARGV)
+
+if @options.filenames.empty?
   usage 1, "A file must be provided"
 end
 
@@ -75,7 +82,7 @@ max_timestamp = nil
 events = []
 events_processed = 0
 
-ARGV.each do |filename|
+@options.filenames.each do |filename|
   reader = BinlogFileReader.new(filename)
   binlog = Binlog.new(reader)
   reader.tail = @options.tail

@@ -15,13 +15,13 @@ def usage(exit_code, message = nil)
 
 Usage:
   To read from a binary log file on disk:
-    mysql_binlog_dump [options] -f <filename>
+    mysql_binlog_dump [options] <filename(s)>
 
   --help, -?
     Show this help.
 
   --file, -f <filename>
-    Read from a binary log file on disk.
+    Read from a binary log file on disk (deprecated).
 
   --checksum, -c
     Enable CRC32 checksums.
@@ -52,6 +52,7 @@ end
 @options.debug = false
 @options.tail = false
 @options.rotate = false
+@options.filenames = []
 
 getopt_options = [
   [ "--help",             "-?",     GetoptLong::NO_ARGUMENT ],
@@ -69,7 +70,7 @@ getopt.each do |opt, arg|
   when "--help"
     usage 0
   when "--file"
-    @options.file = arg
+    @options.filenames << arg
   when "--checksum"
     @options.checksum = :crc32
   when "--debug"
@@ -81,21 +82,25 @@ getopt.each do |opt, arg|
   end
 end
 
-unless @options.file
-  usage 1, "A file must be provided with --file/-f"
+@options.filenames.concat(ARGV)
+
+if @options.filenames.empty?
+  usage 1, "One or more filenames must be provided"
 end
 
-reader = BinlogFileReader.new(@options.file)
-if @options.debug
-  reader = DebuggingReader.new(reader, :data => true, :calls => true)
-end
-binlog = Binlog.new(reader)
-binlog.checksum = @options.checksum
+@options.filenames.each do |filename|
+  reader = BinlogFileReader.new(filename)
+  if @options.debug
+    reader = DebuggingReader.new(reader, :data => true, :calls => true)
+  end
+  binlog = Binlog.new(reader)
+  binlog.checksum = @options.checksum
 
-reader.tail = @options.tail
-binlog.ignore_rotate = !@options.rotate
+  reader.tail = @options.tail
+  binlog.ignore_rotate = !@options.rotate
 
-binlog.each_event do |event|
-  pp event
-  puts
+  binlog.each_event do |event|
+    pp event
+    puts
+  end
 end
