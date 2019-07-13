@@ -111,11 +111,24 @@ ARGV.each do |filename|
     file_min_timestamp = [file_min_timestamp || timestamp, timestamp].min
     file_max_timestamp = [file_max_timestamp || timestamp, timestamp].max
 
+    net_change = 0
+    event[:event][:row_image]&.each do |row_image|
+      case verb
+      when "delete_rows"
+        net_change -= row_image[:before][:size]
+      when "update_rows"
+        net_change += row_image[:after][:size] - row_image[:before][:size]
+      when "write_rows"
+        net_change += row_image[:after][:size]
+      end
+    end
+
     events << {
       timestamp: timestamp,
       type: event[:type],
       verb: verb,
       table: table,
+      net_change: net_change,
     }
 
     file_events_processed += 1
@@ -165,11 +178,16 @@ puts
 
 events_by_type = Hash.new(0)
 events_by_verb_and_table = {}
+net_change_by_verb_and_table = {}
+net_change_by_table = Hash.new(0)
 events.each do |event|
   events_by_type[event[:type]] += 1
   if event[:verb]
     events_by_verb_and_table[event[:verb]] ||= Hash.new(0)
     events_by_verb_and_table[event[:verb]][event[:table]] += 1
+    net_change_by_verb_and_table[event[:verb]] ||= Hash.new(0)
+    net_change_by_verb_and_table[event[:verb]][event[:table]] += event[:net_change]
+    net_change_by_table[event[:table]] += event[:net_change]
   end
 end
 
@@ -183,8 +201,18 @@ puts "Events by verb and table:"
 events_by_verb_and_table.sort.each do |verb, table_and_count|
   puts "%s\n" % [verb]
   table_and_count.sort { |a, b| b[1] <=> a[1] }.each do |table, count|
-    puts "  %-50s%10d%10.2f/s" % [table, count, count.to_f / duration.to_f]
+    puts "  %-50s%10d%10.2f/s%+10.2f KiB/s" % [
+      table, count, count.to_f / duration.to_f,
+      net_change_by_verb_and_table[verb][table] / 1024.0 / duration.to_f,
+    ]
   end
   puts
+end
+
+puts "Net change by table (top 10):"
+net_change_by_table.sort { |a, b| b[1].abs <=> a[1].abs }.first(10).each do |table, net_change|
+  puts "  %-50s%+10.2f KiB/s" % [
+    table, net_change.to_f / 1024.0 / duration.to_f
+  ]
 end
 puts
