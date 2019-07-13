@@ -490,6 +490,7 @@ module MysqlBinlog
     # and false values identifies which columns are present.
     def _generic_rows_event_row_image_v1(header, fields, columns_used)
       row_image = []
+      start_position = reader.position
       columns_null = parser.read_bit_array(fields[:table][:columns].size)
       fields[:table][:columns].each_with_index do |column, column_index|
         #puts "column #{column_index} #{column}: used=#{columns_used[column_index]}, null=#{columns_null[column_index]}"
@@ -504,7 +505,12 @@ module MysqlBinlog
           }
         end
       end
-      row_image
+      end_position = reader.position
+
+      {
+        image: row_image,
+        size: end_position-start_position
+      }
     end
     private :_generic_rows_event_row_image_v1
 
@@ -537,7 +543,7 @@ module MysqlBinlog
         when :update_rows_event_v1
           row_image[:before] = _generic_rows_event_row_image_v1(header, fields, columns_used[:before])
           row_image[:after]  = _generic_rows_event_row_image_v1(header, fields, columns_used[:after])
-          row_image[:diff] = diff_row_images(row_image[:before], row_image[:after])
+          row_image[:diff] = diff_row_images(row_image[:before][:image], row_image[:after][:image])
         end
         row_images << row_image
       end
