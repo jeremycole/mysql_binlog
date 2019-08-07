@@ -64,6 +64,11 @@ module MysqlBinlog
       reader.read(2).unpack("v").first
     end
 
+    # Read an unsigned 16-bit (2-byte) big-endian integer.
+    def read_uint16_be
+      reader.read(2).unpack("n").first
+    end
+
     # Read an unsigned 24-bit (3-byte) integer.
     def read_uint24
       a, b, c = reader.read(3).unpack("CCC")
@@ -407,9 +412,8 @@ module MysqlBinlog
       ]
     end
 
-    def read_datetimef(decimals)
-      int_part = read_uint40_be
-      frac_part = case decimals
+    def read_frac_part(decimals)
+      case decimals
       when 0
         0
       when 1, 2
@@ -419,7 +423,14 @@ module MysqlBinlog
       when 5, 6
         read_uint24_be
       end
-      convert_mysql_type_datetimef(int_part, frac_part)
+    end
+
+    def read_datetimef(decimals)
+      convert_mysql_type_datetimef(read_uint40_be, read_frac_part(decimals))
+    end
+
+    def read_timestamp2(decimals)
+      read_uint32_be + (read_frac_part(decimals) / 1000000)
     end
 
     # Read a single field, provided the MySQL column type as a symbol. Not all
@@ -449,6 +460,8 @@ module MysqlBinlog
         read_lpstring(metadata[:length_size])
       when :timestamp
         read_uint32
+      when :timestamp2
+        read_timestamp2(metadata[:decimals])
       when :year
         read_uint8 + 1900
       when :date

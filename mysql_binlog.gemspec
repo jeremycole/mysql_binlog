@@ -7,6 +7,7 @@ Gem::Specification.new do |s|
   s.version     = MysqlBinlog::VERSION
   s.date        = Time.now.strftime("%Y-%m-%d")
   s.summary     = 'MySQL Binary Log Parser'
+  s.license     = 'BSD-3-Clause'
   s.description = 'Library for parsing MySQL binary logs in Ruby'
   s.authors     = [ 'Jeremy Cole' ]
   s.email       = 'jeremy@jcole.us'
