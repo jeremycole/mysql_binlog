@@ -25,5 +25,6 @@ Gem::Specification.new do |s|
   ]
   s.executables = [
     'mysql_binlog_dump',
+    'mysql_binlog_summary',
   ]
 end

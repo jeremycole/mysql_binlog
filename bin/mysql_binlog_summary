@@ -3,9 +3,6 @@
 require 'mysql_binlog'
 require 'getoptlong'
 require 'ostruct'
-require 'pp'
-
-include MysqlBinlog
 
 def usage(exit_code, message = nil)
   print "Error: #{message}\n\n" unless message.nil?
@@ -83,8 +80,8 @@ events = []
 events_processed = 0
 
 @options.filenames.each do |filename|
-  reader = BinlogFileReader.new(filename)
-  binlog = Binlog.new(reader)
+  reader = MysqlBinlog::BinlogFileReader.new(filename)
+  binlog = MysqlBinlog::Binlog.new(reader)
   reader.tail = @options.tail
   binlog.ignore_rotate = !@options.rotate
   binlog.checksum = @options.checksum
@@ -108,7 +105,7 @@ events_processed = 0
       end
     end
 
-    if ROW_EVENT_TYPES.include? event[:type]
+    if MysqlBinlog::ROW_EVENT_TYPES.include? event[:type]
       verb  = event[:type].to_s.sub(/_event_v[12]/, '')
       table = event[:event][:table][:table]
     end

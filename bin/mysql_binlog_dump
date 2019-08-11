@@ -6,8 +6,6 @@ require 'getoptlong'
 require 'ostruct'
 require 'pp'
 
-include MysqlBinlog
-
 def usage(exit_code, message = nil)
   print "Error: #{message}\n\n" unless message.nil?
 
@@ -89,11 +87,11 @@ if @options.filenames.empty?
 end
 
 @options.filenames.each do |filename|
-  reader = BinlogFileReader.new(filename)
+  reader = MysqlBinlog::BinlogFileReader.new(filename)
   if @options.debug
-    reader = DebuggingReader.new(reader, :data => true, :calls => true)
+    reader = MysqlBinlog::DebuggingReader.new(reader, :data => true, :calls => true)
   end
-  binlog = Binlog.new(reader)
+  binlog = MysqlBinlog::Binlog.new(reader)
   binlog.checksum = @options.checksum
 
   reader.tail = @options.tail
