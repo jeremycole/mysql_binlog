@@ -31,17 +31,17 @@ module MysqlBinlog
     :delete_rows_event_v1       => 25,  #
     :incident_event             => 26,  #
     :heartbeat_log_event        => 27,  #
-    :ignorable_log_event        => 28,
-    :rows_query_log_event       => 29,
-    :write_rows_event_v2        => 30,
-    :update_rows_event_v2       => 31,
-    :delete_rows_event_v2       => 32,
-    :gtid_log_event             => 33,
-    :anonymous_gtid_log_event   => 34,
-    :previous_gtids_log_event   => 35,
-    :transaction_context_event  => 36,
-    :view_change_event          => 37,
-    :xa_prepare_log_event       => 38,
+    :ignorable_log_event        => 28,  #
+    :rows_query_log_event       => 29,  #
+    :write_rows_event_v2        => 30,  #
+    :update_rows_event_v2       => 31,  #
+    :delete_rows_event_v2       => 32,  #
+    :gtid_log_event             => 33,  #
+    :anonymous_gtid_log_event   => 34,  #
+    :previous_gtids_log_event   => 35,  #
+    :transaction_context_event  => 36,  #
+    :view_change_event          => 37,  #
+    :xa_prepare_log_event       => 38,  #
 
     :table_metadata_event       => 50,  # Only in Twitter MySQL
   }
@@ -59,6 +59,9 @@ module MysqlBinlog
     :write_rows_event_v1,
     :update_rows_event_v1,
     :delete_rows_event_v1,
+    :write_rows_event_v2,
+    :update_rows_event_v2,
+    :delete_rows_event_v2,
   ]
 
   # Values for the +flags+ field that may appear in binary logs. There are
@@ -173,6 +176,10 @@ module MysqlBinlog
     :relaxed_unique_checks  => 1 << 2,  # RELAXED_UNIQUE_CHECKS_F
     :complete_rows          => 1 << 3,  # COMPLETE_ROWS_F
   }
+
+  GENERIC_ROWS_EVENT_VH_FIELD_TYPES = [
+    :extra_rows_info,                   # ROWS_V_EXTRAINFO_TAG
+  ]
 
   # Parse binary log events from a provided binary log. Must be driven
   # externally, but handles all the details of parsing an event header
@@ -488,7 +495,7 @@ module MysqlBinlog
     # Parse a single row image, which is comprised of a series of columns. Not
     # all columns are present in the row image, the columns_used array of true
     # and false values identifies which columns are present.
-    def _generic_rows_event_row_image_v1(header, fields, columns_used)
+    def _generic_rows_event_row_image(header, fields, columns_used)
       row_image = []
       start_position = reader.position
       columns_null = parser.read_bit_array(fields[:table][:columns].size)
@@ -512,7 +519,7 @@ module MysqlBinlog
         size: end_position-start_position
       }
     end
-    private :_generic_rows_event_row_image_v1
+    private :_generic_rows_event_row_image
 
     def diff_row_images(before, after)
       diff = {}
@@ -530,19 +537,19 @@ module MysqlBinlog
     # Parse the row images present in a row-based replication row event. This
     # is rather incomplete right now due missing support for many MySQL types,
     # but can parse some basic events.
-    def _generic_rows_event_row_images_v1(header, fields, columns_used)
+    def _generic_rows_event_row_images(header, fields, columns_used)
       row_images = []
       end_position = reader.position + reader.remaining(header)
       while reader.position < end_position
         row_image = {}
         case header[:event_type]
-        when :write_rows_event_v1
-          row_image[:after]  = _generic_rows_event_row_image_v1(header, fields, columns_used[:after])
-        when :delete_rows_event_v1
-          row_image[:before] = _generic_rows_event_row_image_v1(header, fields, columns_used[:before])
-        when :update_rows_event_v1
-          row_image[:before] = _generic_rows_event_row_image_v1(header, fields, columns_used[:before])
-          row_image[:after]  = _generic_rows_event_row_image_v1(header, fields, columns_used[:after])
+        when :write_rows_event_v1, :write_rows_event_v2
+          row_image[:after]  = _generic_rows_event_row_image(header, fields, columns_used[:after])
+        when :delete_rows_event_v1, :delete_rows_event_v1
+          row_image[:before] = _generic_rows_event_row_image(header, fields, columns_used[:before])
+        when :update_rows_event_v1, :update_rows_event_v2
+          row_image[:before] = _generic_rows_event_row_image(header, fields, columns_used[:before])
+          row_image[:after]  = _generic_rows_event_row_image(header, fields, columns_used[:after])
           row_image[:diff] = diff_row_images(row_image[:before][:image], row_image[:after][:image])
         end
         row_images << row_image
@@ -557,7 +564,17 @@ module MysqlBinlog
 
       row_images
     end
-    private :_generic_rows_event_row_images_v1
+    private :_generic_rows_event_row_images
+
+    # Parse the variable header from a v2 rows event. This is only used for
+    # ROWS_V_EXTRAINFO_TAG which is used by NDB. Ensure it can be skipped
+    # properly but don't bother parsing it.
+    def _generic_rows_event_vh
+      vh_payload_len = parser.read_uint16 - 2
+      return unless vh_payload_len > 0
+
+      reader.read(vh_payload_len)
+    end
 
     # Parse fields for any of the row-based replication row events:
     # * +Write_rows+ which is used for +INSERT+.
@@ -567,29 +584,47 @@ module MysqlBinlog
     # Implemented in sql/log_event.cc line ~8039
     # in Rows_log_event::write_data_header
     # and Rows_log_event::write_data_body
-    def generic_rows_event_v1(header)
+    def _generic_rows_event(header, contains_vh: false)
       fields = {}
       table_id = parser.read_uint48
       fields[:table] = @table_map[table_id]
       fields[:flags] = parser.read_uint_bitmap_by_size_and_name(2, GENERIC_ROWS_EVENT_FLAGS)
+
+      # Rows_log_event v2 events contain a variable-sized header. Only NDB
+      # uses it right now, so let's just make sure it's skipped properly.
+      _generic_rows_event_vh if contains_vh
+
       columns = parser.read_varint
       columns_used = {}
       case header[:event_type]
-      when :write_rows_event_v1
+      when :write_rows_event_v1, :write_rows_event_v2
         columns_used[:after]  = parser.read_bit_array(columns)
-      when :delete_rows_event_v1
+      when :delete_rows_event_v1, :delete_rows_event_v2
         columns_used[:before] = parser.read_bit_array(columns)
-      when :update_rows_event_v1
+      when :update_rows_event_v1, :update_rows_event_v2
         columns_used[:before] = parser.read_bit_array(columns)
         columns_used[:after]  = parser.read_bit_array(columns)
       end
-      fields[:row_image] = _generic_rows_event_row_images_v1(header, fields, columns_used)
+      fields[:row_image] = _generic_rows_event_row_images(header, fields, columns_used)
       fields
+    end
+    private :_generic_rows_event
+
+    def generic_rows_event_v1(header)
+      _generic_rows_event(header, contains_vh: false)
     end
 
     alias :write_rows_event_v1  :generic_rows_event_v1
     alias :update_rows_event_v1 :generic_rows_event_v1
     alias :delete_rows_event_v1 :generic_rows_event_v1
+
+    def generic_rows_event_v2(header)
+      _generic_rows_event(header, contains_vh: true)
+    end
+
+    alias :write_rows_event_v2  :generic_rows_event_v2
+    alias :update_rows_event_v2 :generic_rows_event_v2
+    alias :delete_rows_event_v2 :generic_rows_event_v2
 
     def rows_query_log_event(header)
       reader.read(1) # skip useless byte length which is unused
