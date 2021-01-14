@@ -307,6 +307,8 @@ module MysqlBinlog
           _query_event_status_updated_db_names
         when :commit_ts
           parser.read_uint64
+        when :microseconds
+          parser.read_uint24
         else
           raise "Unknown status type #{status_type_id}"
         end
