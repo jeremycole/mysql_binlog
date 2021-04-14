@@ -129,6 +129,7 @@ events_processed = 0
 
     events << {
       timestamp: timestamp,
+      size: event[:header][:payload_length],
       type: event[:type],
       verb: verb,
       table: table,
@@ -182,6 +183,8 @@ puts
 
 events_by_type = Hash.new(0)
 events_by_verb_and_table = {}
+size_by_verb_and_table = {}
+size_by_table = Hash.new(0)
 net_change_by_verb_and_table = {}
 net_change_by_table = Hash.new(0)
 events.each do |event|
@@ -189,6 +192,9 @@ events.each do |event|
   if event[:verb]
     events_by_verb_and_table[event[:verb]] ||= Hash.new(0)
     events_by_verb_and_table[event[:verb]][event[:table]] += 1
+    size_by_verb_and_table[event[:verb]] ||= Hash.new(0)
+    size_by_verb_and_table[event[:verb]][event[:table]] += event[:size]
+    size_by_table[event[:table]] += event[:size]
     net_change_by_verb_and_table[event[:verb]] ||= Hash.new(0)
     net_change_by_verb_and_table[event[:verb]][event[:table]] += event[:net_change]
     net_change_by_table[event[:table]] += event[:net_change]
@@ -204,14 +210,26 @@ puts
 puts "Events by verb and table:"
 events_by_verb_and_table.sort.each do |verb, table_and_count|
   puts "%s\n" % [verb]
+  puts "  %-50s%10s%14s%14s%14s" % [
+    "", "Count", "Rate/s", "Net (KiB/s)", "Size (KiB/s)"
+  ]
   table_and_count.sort { |a, b| b[1] <=> a[1] }.each do |table, count|
-    puts "  %-50s%10d%10.2f/s%+10.2f KiB/s" % [
-      table, count, count.to_f / duration.to_f,
+    puts "  %-50s%10d%14s%+14.2f%14.2f" % [
+      table, count, "%10.2f/s" % [count.to_f / duration.to_f],
       net_change_by_verb_and_table[verb][table] / 1024.0 / duration.to_f,
+      size_by_verb_and_table[verb][table] / 1024.0 / duration.to_f,
     ]
   end
   puts
 end
+
+puts "Event payload by table (top 10):"
+size_by_table.sort { |a, b| b[1].abs <=> a[1].abs }.first(10).each do |table, size|
+  puts "  %-50s%+10.2f KiB/s" % [
+    table, size.to_f / 1024.0 / duration.to_f
+  ]
+end
+puts
 
 puts "Net change by table (top 10):"
 net_change_by_table.sort { |a, b| b[1].abs <=> a[1].abs }.first(10).each do |table, net_change|
@@ -220,3 +238,4 @@ net_change_by_table.sort { |a, b| b[1].abs <=> a[1].abs }.first(10).each do |tab
   ]
 end
 puts
+
