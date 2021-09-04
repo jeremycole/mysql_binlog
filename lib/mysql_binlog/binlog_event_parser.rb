@@ -547,7 +547,7 @@ module MysqlBinlog
         case header[:event_type]
         when :write_rows_event_v1, :write_rows_event_v2
           row_image[:after]  = _generic_rows_event_row_image(header, fields, columns_used[:after])
-        when :delete_rows_event_v1, :delete_rows_event_v1
+        when :delete_rows_event_v1, :delete_rows_event_v2
           row_image[:before] = _generic_rows_event_row_image(header, fields, columns_used[:before])
         when :update_rows_event_v1, :update_rows_event_v2
           row_image[:before] = _generic_rows_event_row_image(header, fields, columns_used[:before])
