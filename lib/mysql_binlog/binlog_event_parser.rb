@@ -305,6 +305,11 @@ module MysqlBinlog
           parser.read_uint64
         when :master_data_written
           parser.read_uint32
+        when :invoker
+          {
+            :user => parser.read_lpstring,
+            :host => parser.read_lpstring,
+          }
         when :updated_db_names
           _query_event_status_updated_db_names
         when :commit_ts
