@@ -303,6 +303,11 @@ module MysqlBinlog
           parser.read_uint16
         when :table_map_for_update
           parser.read_uint64
+        when :invoker
+          {
+            :user => parser.read_lpstring,
+            :host => parser.read_lpstring,
+          }
         when :updated_db_names
           _query_event_status_updated_db_names
         when :commit_ts
