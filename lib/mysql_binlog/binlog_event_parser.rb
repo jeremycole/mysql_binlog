@@ -308,6 +308,8 @@ module MysqlBinlog
             :user => parser.read_lpstring,
             :host => parser.read_lpstring,
           }
+        when :master_data_written
+          parser.read_uint32
         when :updated_db_names
           _query_event_status_updated_db_names
         when :commit_ts
