@@ -101,7 +101,7 @@ module MysqlBinlog
     :microseconds,              # 13 (Q_MICROSECONDS)
     :commit_ts,                 # 14 (Q_COMMIT_TS)
     :commit_ts2,                # 15
-    :explicit_defaults_for_timestamp, # 16
+    :explicit_defaults_for_timestamp, # 16 (Q_EXPLICIT_DEFAULTS_FOR_TIMESTAMP)
   ]
 
   QUERY_EVENT_OVER_MAX_DBS_IN_EVENT_MTS = 254
@@ -316,6 +316,8 @@ module MysqlBinlog
           parser.read_uint64
         when :microseconds
           parser.read_uint24
+        when :explicit_defaults_for_timestamp
+          parser.read_uint8
         else
           raise "Unknown status type #{status_type_id}"
         end
