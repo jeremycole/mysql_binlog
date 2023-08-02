@@ -132,7 +132,7 @@ module MysqlBinlog
 
     # Read a signed 16-bit (2-byte) big-endian integer.
     def read_int16_be
-      reader.read(2).unpack('n').first
+      reader.read(2).unpack('s>').first
     end
 
     # Read a signed 24-bit (3-byte) big-endian integer.
@@ -147,7 +147,7 @@ module MysqlBinlog
 
     # Read a signed 32-bit (4-byte) big-endian integer.
     def read_int32_be
-      reader.read(4).unpack('N').first
+      reader.read(4).unpack('l>').first
     end
     
     def read_uint_by_size(size)
