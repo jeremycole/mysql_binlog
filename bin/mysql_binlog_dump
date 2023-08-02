@@ -24,6 +24,9 @@ Usage:
   --checksum, -c
     Enable CRC32 checksums.
 
+  --position, -j
+    Start the first file at a particular position.
+
   --debug, -d
     Debug reading from the binary log, showing calls into the reader and the
     data bytes read. This is useful for debugging the mysql_binlog library
@@ -47,6 +50,7 @@ end
 @options = OpenStruct.new
 @options.file = nil
 @options.checksum = nil
+@options.position = nil
 @options.debug = false
 @options.tail = false
 @options.rotate = false
@@ -56,6 +60,7 @@ getopt_options = [
   [ "--help",             "-?",     GetoptLong::NO_ARGUMENT ],
   [ "--file",             "-f",     GetoptLong::REQUIRED_ARGUMENT ],
   [ "--checksum",         "-c",     GetoptLong::NO_ARGUMENT ],
+  [ "--position",         "-j",     GetoptLong::REQUIRED_ARGUMENT ],
   [ "--debug",            "-d",     GetoptLong::NO_ARGUMENT ],
   [ "--tail",             "-t",     GetoptLong::NO_ARGUMENT ],
   [ "--rotate",           "-r",     GetoptLong::NO_ARGUMENT ],
@@ -71,6 +76,8 @@ getopt.each do |opt, arg|
     @options.filenames << arg
   when "--checksum"
     @options.checksum = :crc32
+  when "--position"
+    @options.position = arg.to_i
   when "--debug"
     @options.debug = true
   when "--tail"
@@ -86,7 +93,7 @@ if @options.filenames.empty?
   usage 1, "One or more filenames must be provided"
 end
 
-@options.filenames.each do |filename|
+@options.filenames.each_with_index do |filename, i|
   reader = MysqlBinlog::BinlogFileReader.new(filename)
   if @options.debug
     reader = MysqlBinlog::DebuggingReader.new(reader, :data => true, :calls => true)
@@ -96,6 +103,8 @@ end
 
   reader.tail = @options.tail
   binlog.ignore_rotate = !@options.rotate
+
+  binlog.seek(@options.position) if @options.position && i.zero?
 
   binlog.each_event do |event|
     pp event

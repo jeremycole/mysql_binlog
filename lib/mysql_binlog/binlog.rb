@@ -72,6 +72,13 @@ module MysqlBinlog
       reader.rewind
     end
 
+    def seek(position)
+      # Try to find and consume the format description event which is necessary for understanding
+      # the subsequent event format; can't seek arbitrarily until we have it.
+      read_event until @fde
+      reader.seek(position)
+    end
+
     # Skip the remainder of this event. This can be used to skip an entire
     # event or merely the parts of the event this library does not understand.
     def skip_event(header)
