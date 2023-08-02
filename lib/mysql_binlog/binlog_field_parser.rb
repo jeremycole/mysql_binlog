@@ -452,12 +452,14 @@ module MysqlBinlog
       when :double
         read_double
       when :var_string
-        read_varstring
+        read_varstring.force_encoding('UTF-8')
       when :varchar, :string
         prefix_size = (metadata[:max_length] > 255) ? 2 : 1
-        read_lpstring(prefix_size)
-      when :blob, :geometry, :json
-        read_lpstring(metadata[:length_size])
+        read_lpstring(prefix_size).force_encoding('UTF-8')
+      when :blob, :geometry
+        read_lpstring(metadata[:length_size]).force_encoding('binary')
+      when :json
+        read_lpstring(metadata[:length_size]).force_encoding('UTF-8')
       when :timestamp
         read_uint32
       when :timestamp2

@@ -226,7 +226,7 @@ module MysqlBinlog
     def format_description_event(header)
       fields = {}
       fields[:binlog_version]   = parser.read_uint16
-      fields[:server_version]   = parser.read_nstringz(50)
+      fields[:server_version]   = parser.read_nstringz(50).force_encoding("UTF-8")
       fields[:create_timestamp] = parser.read_uint32
       fields[:header_length]    = parser.read_uint8
       fields
@@ -239,7 +239,7 @@ module MysqlBinlog
       fields = {}
       fields[:pos] = parser.read_uint64
       name_length = reader.remaining(header)
-      fields[:name] = parser.read_nstring(name_length)
+      fields[:name] = parser.read_nstring(name_length).force_encoding("UTF-8")
       fields
     end
 
@@ -255,7 +255,7 @@ module MysqlBinlog
           break if c == "\0"
           db_name << c
         end
-        db_names << db_name
+        db_names << db_name.force_encoding("UTF-8")
       end
 
       db_names
@@ -281,7 +281,7 @@ module MysqlBinlog
         when :sql_mode
           parser.read_uint64
         when :catalog_deprecated
-          parser.read_lpstringz
+          parser.read_lpstringz.force_encoding("UTF-8")
         when :auto_increment
           {
             :increment => parser.read_uint16,
@@ -294,9 +294,9 @@ module MysqlBinlog
             :collation_server     => COLLATION[parser.read_uint16],
           }
         when :time_zone
-          parser.read_lpstring
+          parser.read_lpstring.force_encoding("UTF-8")
         when :catalog
-          parser.read_lpstring
+          parser.read_lpstring.force_encoding("UTF-8")
         when :lc_time_names
           parser.read_uint16
         when :charset_database
@@ -307,8 +307,8 @@ module MysqlBinlog
           parser.read_uint32
         when :invoker
           {
-            :user => parser.read_lpstring,
-            :host => parser.read_lpstring,
+            :user => parser.read_lpstring.force_encoding("UTF-8"),
+            :host => parser.read_lpstring.force_encoding("UTF-8"),
           }
         when :updated_db_names
           _query_event_status_updated_db_names
@@ -344,9 +344,20 @@ module MysqlBinlog
       db_length = parser.read_uint8
       fields[:error_code] = parser.read_uint16
       fields[:status] = _query_event_status(header, fields)
-      fields[:db] = parser.read_nstringz(db_length + 1)
+      fields[:db] = parser.read_nstringz(db_length + 1).force_encoding("UTF-8")
       query_length = reader.remaining(header)
-      fields[:query] = reader.read([query_length, binlog.max_query_length].min)
+
+      character_set = fields[:status][:charset][:character_set_client][:character_set]
+      query = reader.read([query_length, binlog.max_query_length].min)
+      case character_set
+      when :utf8mb4, :utf8
+        fields[:query] = query.force_encoding("UTF-8")
+      when :latin1 # Note: Used for internally-generated query events such as "BEGIN".
+        fields[:query] = query.force_encoding("ISO-8859-1")
+      else
+        raise "Unsupported character set #{character_set} for query event in #{reader.filename} at offset #{reader.position}"
+      end
+
       fields
     end
 
@@ -445,8 +456,8 @@ module MysqlBinlog
       fields[:table_id] = parser.read_uint48
       fields[:flags] = parser.read_uint_bitmap_by_size_and_name(2, TABLE_MAP_EVENT_FLAGS)
       map_entry = @table_map[fields[:table_id]] = {}
-      map_entry[:db] = parser.read_lpstringz
-      map_entry[:table] = parser.read_lpstringz
+      map_entry[:db] = parser.read_lpstringz.force_encoding("UTF-8")
+      map_entry[:table] = parser.read_lpstringz.force_encoding("UTF-8")
       columns = parser.read_varint
       columns_type = parser.read_uint8_array(columns).map { |c| MYSQL_TYPES[c] || "unknown_#{c}".to_sym }
       columns_metadata = _table_map_event_column_metadata(columns_type)
@@ -495,9 +506,9 @@ module MysqlBinlog
           :character_set => COLLATION[parser.read_uint16],
           :flags => parser.read_uint_bitmap_by_size_and_name(2,
                     TABLE_METADATA_EVENT_COLUMN_FLAGS),
-          :name => parser.read_varstring,
-          :type_name => parser.read_varstring,
-          :comment => parser.read_varstring,
+          :name => parser.read_varstring.force_encoding("UTF-8"),
+          :type_name => parser.read_varstring.force_encoding("UTF-8"),
+          :comment => parser.read_varstring.force_encoding("UTF-8"),
         }
       end
       fields
@@ -639,6 +650,7 @@ module MysqlBinlog
 
     def rows_query_log_event(header)
       reader.read(1) # skip useless byte length which is unused
+      # TODO: What character set?
       { query: reader.read(header[:payload_length]-1) }
     end
 
@@ -678,7 +690,7 @@ module MysqlBinlog
 
     def gtid_log_event(header)
       flags = parser.read_uint8
-      sid = parser.read_nstring(16)
+      sid = parser.read_nstring(16).force_encoding("UTF-8")
       gno = parser.read_uint64
       lts_type = parser.read_uint8
       lts_last_committed = parser.read_uint64
